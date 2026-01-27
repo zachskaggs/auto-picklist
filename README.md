@@ -46,6 +46,19 @@ Notes:
 - The SQLite DB is intentionally bundled inside the image.
 - To reset data, rebuild the image.
 
+## Portainer (Git stack)
+
+Portainer Git stacks cannot read your local `.env` on disk. Use one of these:
+
+Option A (recommended):
+- Set variables in the **Environment variables** section of the stack UI.
+- Use `stack.env.example` as a template.
+
+Option B:
+- Upload an `.env` file inside the stack UI (Portainer will use it for `${VAR}` substitution).
+
+After setting variables, re-deploy the stack. Check `/health` for **ManaPool Configured: Yes**.
+
 ## How picklist generation works (ManaPool)
 
 From the Open Batches screen, click **Generate Picklist from ManaPool (Unfulfilled)**.
