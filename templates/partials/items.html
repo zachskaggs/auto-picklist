@@ -1,0 +1,9 @@
+{% set prev_set = None %}
+{% for item in items %}
+  {% set qty_remaining = item.qty_remaining %}
+  {% set show_reserve = item.set_code != prev_set %}
+  {% include "partials/item_row.html" %}
+  {% set prev_set = item.set_code %}
+{% else %}
+  <div class="item-row">No items</div>
+{% endfor %}

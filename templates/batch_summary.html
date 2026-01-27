@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">Batch Summary - {{ batch.name }}</div>
+  <div>
+    <a class="btn secondary" href="/">Back to batches</a>
+    <a class="btn secondary" href="/batch/{{ batch.id }}/missing.csv">Export missing CSV</a>
+  </div>
+</div>
+<div class="panel" style="padding: 12px 16px; display: flex; gap: 16px;">
+  <div><strong>{{ total }}</strong> total items</div>
+  <div><strong>{{ picked }}</strong> picked complete</div>
+  <div><strong>{{ missing }}</strong> missing</div>
+</div>
+<div class="panel">
+  <div class="item-row"><strong>Missing items</strong></div>
+  {% for item in items %}
+    <div class="item-row">
+      <div class="item-name">{{ item.card_name }}</div>
+      <div>{{ item.set_code | upper }}</div>
+      <div>{{ item.qty_required }}</div>
+      <div>{{ item.missing_note or '' }}</div>
+    </div>
+  {% else %}
+    <div class="item-row">No missing items</div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">Health Check</div>
+  <div><a class="btn secondary" href="/">Back</a></div>
+</div>
+<div class="panel" style="padding: 16px;">
+  <div class="item-row">
+    <div>DB Path</div>
+    <div>{{ db_path }}</div>
+  </div>
+  <div class="item-row">
+    <div>ManaPool Configured</div>
+    <div>{{ 'Yes' if manapool_configured else 'No' }}</div>
+  </div>
+  <div class="item-row">
+    <div>Order Cache Count</div>
+    <div>{{ cache_count }}</div>
+  </div>
+  <div class="item-row">
+    <div>Last Sync</div>
+    <div>{{ last_sync }}</div>
+  </div>
+</div>
+
+<div class="panel" style="padding: 16px;">
+  <div class="title" style="font-size:18px;">ManaPool Order Numbers by Batch</div>
+  {% for b in batch_orders %}
+    <div class="item-row">
+      <div>{{ b.name }} (#{{ b.id }})</div>
+      <div>{{ b.order_numbers }}</div>
+    </div>
+  {% else %}
+    <div class="item-row">No ManaPool batches found</div>
+  {% endfor %}
+</div>
+{% endblock %}

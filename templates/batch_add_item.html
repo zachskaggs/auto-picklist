@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">Add Items - {{ batch.name }}</div>
+  <div><a class="btn secondary" href="/batch/{{ batch.id }}">Back to batch</a></div>
+</div>
+<div class="panel" style="padding: 16px;">
+  <form method="post" action="/batch/{{ batch.id }}/items" style="display:grid; gap:10px; max-width: 600px;">
+    <input class="input" name="game" placeholder="Game (Magic/Pokemon)" />
+    <input class="input" name="set_code" placeholder="Set code" />
+    <input class="input" name="card_name" placeholder="Card name" />
+    <input class="input" name="collector_number" placeholder="Collector number (optional)" />
+    <input class="input" type="number" min="1" name="qty_required" placeholder="Qty required" />
+    <input class="input" name="condition" placeholder="Condition (optional)" />
+    <input class="input" name="language" placeholder="Language (optional)" />
+    <input class="input" name="printing" placeholder="Printing (optional)" />
+    <button class="btn" type="submit">Add item</button>
+  </form>
+</div>
+{% endblock %}

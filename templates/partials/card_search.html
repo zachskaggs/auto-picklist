@@ -1,0 +1,22 @@
+<div class="modal" onclick="this.remove()">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <h2>Search results for "{{ name }}"</h2>
+    {% for c in cards %}
+      <div class="item-row">
+        <div>
+          <div class="item-name">{{ c.name }}</div>
+          <div class="badge">{{ c.set | upper }}</div>
+          <div class="badge">{{ c.collector_number }}</div>
+        </div>
+        <div>
+          <button class="btn" onclick="fetch('/items/{{ item_id }}/link_scryfall', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'scryfall_id={{ c.id }}'}).then(()=>location.reload())">Use this</button>
+        </div>
+      </div>
+    {% else %}
+      <p>No results.</p>
+    {% endfor %}
+    <div style="margin-top:12px;">
+      <button class="btn secondary" onclick="this.closest('.modal').remove()">Close</button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,14 @@
+﻿.env
+.env.*
+!.env.example
+
+data/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+.DS_Store
+Thumbs.db
+
+.vscode/

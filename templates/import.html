@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">Import CSV</div>
+  <div><a class="btn secondary" href="/">Back</a></div>
+</div>
+<div class="panel" style="padding: 16px;">
+  <form method="post" enctype="multipart/form-data" action="/import">
+    <input type="file" name="file" class="input" />
+    <button class="btn" type="submit">Import</button>
+  </form>
+  <p>Required columns: batch_name, game, set_code, card_name, qty_required</p>
+</div>
+{% endblock %}

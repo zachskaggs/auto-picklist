@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">New Batch</div>
+  <div><a class="btn secondary" href="/">Back</a></div>
+</div>
+<div class="panel" style="padding: 16px;">
+  <form method="post" action="/batch/new" style="display:grid; gap:12px; max-width: 500px;">
+    <input class="input" name="name" placeholder="Batch name" />
+    <input class="input" name="source" placeholder="Source (TCGPlayer/eBay/etc.)" />
+    <button class="btn" type="submit">Create batch</button>
+  </form>
+</div>
+{% endblock %}

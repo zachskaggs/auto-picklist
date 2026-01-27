@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">Missing Items - {{ batch.name }}</div>
+  <div>
+    <a class="btn secondary" href="/batch/{{ batch.id }}">Back</a>
+    <a class="btn secondary" href="/batch/{{ batch.id }}/missing.csv">Export CSV</a>
+  </div>
+</div>
+<div class="panel">
+  {% for item in items %}
+    <div class="item-row">
+      <div class="item-name">{{ item.card_name }}{% if item.collector_number %} ({{ item.collector_number }}){% endif %}</div>
+      <div>{{ item.set_code | upper }}</div>
+      <div>{{ item.qty_required }}</div>
+      <div>{{ item.missing_note or '' }}</div>
+      <div>{{ item.order_refs or '' }}</div>
+    </div>
+  {% else %}
+    <div class="item-row">No missing items</div>
+  {% endfor %}
+</div>
+{% endblock %}

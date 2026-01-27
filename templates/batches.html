@@ -1,0 +1,50 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">Open Batches</div>
+  <div>
+    <button id="mp-generate-btn" class="btn" onclick="generateManaPoolPicklist()">Generate Picklist from ManaPool (Unfulfilled)</button>
+    <a class="btn" href="/batch/new">New Batch</a>
+    <a class="btn" href="/import">Import CSV</a>
+    
+  </div>
+</div>
+
+<div class="panel" style="padding: 12px 16px;">
+  <div id="mp-status" class="badge">Idle</div>
+  <div id="mp-spinner" class="spinner" style="display:none;"></div>
+  <div id="mp-details" style="margin-top: 8px;"></div>
+</div>
+
+{% if last_log %}
+<div class="panel" style="padding: 12px 16px;">
+  <div><strong>Last ManaPool sync:</strong> {{ last_log.started_at }} ({{ last_log.status }})</div>
+  {% if last_log.summary %}
+    <div class="badge">Orders: {{ last_log.summary.orders_scanned }}</div>
+    <div class="badge">Line items: {{ last_log.summary.line_items }}</div>
+    <div class="badge">Unique cards: {{ last_log.summary.unique_cards }}</div>
+  {% endif %}
+  {% if last_log.error_text %}
+    <div class="badge">Errors: {{ last_log.error_text }}</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+  {% for b in batches %}
+  <div class="batch-row" onclick="window.location='/batch/{{ b.id }}'">
+    <div>
+      <div class="title">{{ b.name }}</div>
+      <div class="badge">{{ b.source or 'Local' }}</div>
+    </div>
+    <div>{{ b.remaining_count }} left</div>
+    <div>{{ b.created_at }}</div>
+    <div>#{{ b.id }}</div>
+  </div>
+  {% else %}
+  <div class="batch-row">No open batches</div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+

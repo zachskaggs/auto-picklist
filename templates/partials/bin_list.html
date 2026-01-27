@@ -1,0 +1,7 @@
+<div>
+  {% for b in bins %}
+    <span class="badge">{{ b.location }}{% if b.note %} - {{ b.note }}{% endif %}</span>
+  {% else %}
+    <span class="badge">No bins set</span>
+  {% endfor %}
+</div>

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">Settings</div>
+  <div><a class="btn secondary" href="/">Back</a></div>
+</div>
+<div class="panel" style="padding: 16px;">
+  <h3>Set Bins</h3>
+  <form method="post" action="/bins" style="display: grid; gap: 8px; max-width: 500px;">
+    <input class="input" name="game" placeholder="Game (Magic/Pokemon)" />
+    <input class="input" name="set_code" placeholder="Set code" />
+    <input class="input" name="location" placeholder="Bin location (B4)" />
+    <input class="input" name="note" placeholder="Note (optional)" />
+    <button class="btn" type="submit">Add Bin</button>
+  </form>
+  <div style="margin-top: 12px;">
+    {% for b in bins %}
+      <div class="item-row">
+        <div>{{ b.game }} - {{ b.set_code | upper }}</div>
+        <div>{{ b.location }}</div>
+        <div>{{ b.note or '' }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
