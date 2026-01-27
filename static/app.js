@@ -264,9 +264,14 @@ window.addEventListener('scroll', () => {
 
 htmx.on('batch-counts-changed', () => {
   const el = document.getElementById('batch-counts');
-  if (el) {
-    htmx.ajax('GET', el.dataset.url, { target: '#batch-counts', swap: 'outerHTML' });
-  }
+  if (!el) return;
+  fetch(el.dataset.url)
+    .then((resp) => resp.text())
+    .then((html) => {
+      const current = document.getElementById('batch-counts');
+      if (!current) return;
+      current.outerHTML = html;
+    });
 });
 
 htmx.on('refresh-items', () => {
@@ -275,7 +280,13 @@ htmx.on('refresh-items', () => {
   const form = document.getElementById('filters');
   const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
   const url = params ? `${el.dataset.url}?${params}` : el.dataset.url;
-  htmx.ajax('GET', url, { target: '#items', swap: 'innerHTML' });
+  fetch(url)
+    .then((resp) => resp.text())
+    .then((html) => {
+      const current = document.getElementById('items');
+      if (!current) return;
+      current.innerHTML = html;
+    });
 });
 
 document.body.addEventListener('htmx:swapError', (evt) => {
@@ -309,6 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initUserName();
   initRealtime();
 });
+
 
 
 
