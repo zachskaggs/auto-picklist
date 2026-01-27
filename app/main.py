@@ -502,7 +502,7 @@ async def reserve_set(request: Request, batch_id: int, set_code: str = Form(...)
     return JSONResponse({'ok': True, 'reserved_by': reserved_by})
 
 @app.post('/items/{item_id}/pick', response_class=HTMLResponse)
-async def pick_item(request: Request, item_id: int, auth=Depends(require_auth)):
+async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, auth=Depends(require_auth)):
     session_id = request.session.get('sid') or str(uuid.uuid4())
     request.session['sid'] = session_id
     with get_conn() as conn:
@@ -516,17 +516,23 @@ async def pick_item(request: Request, item_id: int, auth=Depends(require_auth)):
         conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)', ('pick', item_id, 1, _utc_now(), session_id))
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
-    if remaining_qty(item) == 0:
-        resp = HTMLResponse('')
-        resp.headers['HX-Trigger'] = 'batch-counts-changed'
-        return resp
-    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': remaining_qty(item), 'show_reserve': True})
+    qty_rem = remaining_qty(item)
+    if not show_all:
+        if not show_picked and qty_rem == 0:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
+        if show_missing and not item['is_missing']:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
+    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing)})
     resp.headers['HX-Trigger'] = 'batch-counts-changed'
     return resp
 
 
 @app.post('/items/{item_id}/undo', response_class=HTMLResponse)
-async def undo_pick(request: Request, item_id: int, auth=Depends(require_auth)):
+async def undo_pick(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, auth=Depends(require_auth)):
     session_id = request.session.get('sid')
     with get_conn() as conn:
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
@@ -538,33 +544,63 @@ async def undo_pick(request: Request, item_id: int, auth=Depends(require_auth)):
         conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)', ('undo', item_id, 1, _utc_now(), session_id))
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
-    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': remaining_qty(item), 'show_reserve': True})
+    qty_rem = remaining_qty(item)
+    if not show_all:
+        if not show_picked and qty_rem == 0:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
+        if show_missing and not item['is_missing']:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
+    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing)})
     resp.headers['HX-Trigger'] = 'batch-counts-changed'
     return resp
 
 
 @app.post('/items/{item_id}/missing', response_class=HTMLResponse)
-async def mark_missing(request: Request, item_id: int, note: str = Form(''), auth=Depends(require_auth)):
+async def mark_missing(request: Request, item_id: int, note: str = Form(''), show_picked: int = 0, show_missing: int = 0, show_all: int = 0, auth=Depends(require_auth)):
     session_id = request.session.get('sid')
     with get_conn() as conn:
         conn.execute('UPDATE batch_items SET is_missing = 1, missing_note = ?, updated_at = ? WHERE id = ?', (note, _utc_now(), item_id))
         conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)', ('missing', item_id, 0, _utc_now(), session_id))
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
-    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': remaining_qty(item), 'show_reserve': True})
+    qty_rem = remaining_qty(item)
+    if not show_all:
+        if not show_picked and qty_rem == 0:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
+        if show_missing and not item['is_missing']:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
+    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing)})
     resp.headers['HX-Trigger'] = 'batch-counts-changed'
     return resp
 
 
 @app.post('/items/{item_id}/unmissing', response_class=HTMLResponse)
-async def unmark_missing(request: Request, item_id: int, auth=Depends(require_auth)):
+async def unmark_missing(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, auth=Depends(require_auth)):
     session_id = request.session.get('sid')
     with get_conn() as conn:
         conn.execute('UPDATE batch_items SET is_missing = 0, missing_note = NULL, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
         conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)', ('unmissing', item_id, 0, _utc_now(), session_id))
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
-    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': remaining_qty(item), 'show_reserve': True})
+    qty_rem = remaining_qty(item)
+    if not show_all:
+        if not show_picked and qty_rem == 0:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
+        if show_missing and not item['is_missing']:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
+    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing)})
     resp.headers['HX-Trigger'] = 'batch-counts-changed'
     return resp
 
@@ -767,6 +803,10 @@ def health_view(request: Request, auth=Depends(require_auth)):
         'last_sync': last_sync,
         'batch_orders': batch_orders,
     })
+
+
+
+
 
 
 

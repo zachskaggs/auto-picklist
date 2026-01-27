@@ -18,9 +18,13 @@
 
   btn.onclick = () => {
     clearInterval(timer);
-    fetch(undoUrl, { method: 'POST' }).then(() => {
+    const form = document.getElementById('filters');
+    const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
+    const url = params ? `${undoUrl}?${params}` : undoUrl;
+    fetch(url, { method: 'POST' }).then(() => {
       toast.classList.remove('show');
-      htmx.trigger(document.body, 'batch-counts-changed');      if (itemId) { refreshItem(itemId); }
+      htmx.trigger(document.body, 'batch-counts-changed');
+      if (itemId) { refreshItem(itemId); }
       htmx.trigger(document.body, 'refresh-items');
     });
   };
@@ -32,17 +36,23 @@ function toggleContrast() {
 
 function markMissing(itemId) {
   const note = prompt('Missing note (optional):', '');
-  const body = new URLSearchParams();
-  if (note !== null) {
-    body.set('note', note);
+  if (note === null) {
+    // User canceled; do not mark missing.
+    return;
   }
-  fetch(`/items/${itemId}/missing`, {
+  const body = new URLSearchParams();
+  body.set('note', note);
+  const form = document.getElementById('filters');
+  const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
+  const url = params ? `/items/${itemId}/missing?${params}` : `/items/${itemId}/missing`;
+  fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
   }).then(() => {
-    htmx.trigger(document.body, 'batch-counts-changed');      if (itemId) { refreshItem(itemId); }
-      htmx.trigger(document.body, 'refresh-items');
+    htmx.trigger(document.body, 'batch-counts-changed');
+    if (itemId) { refreshItem(itemId); }
+    htmx.trigger(document.body, 'refresh-items');
   });
 }
 
@@ -150,8 +160,8 @@ function refreshItem(itemId) {
     if (row && row.parentNode) {
       row.outerHTML = html;
     } else if (items && !document.getElementById(`item-${itemId}`)) {
-      // Only insert if the row truly doesn't exist to avoid duplicates.
-      items.insertAdjacentHTML('beforeend', html);
+      // If the row is missing, refresh the full list to preserve sort order.
+      htmx.trigger(document.body, 'refresh-items');
     }
   });
 }
@@ -273,9 +283,9 @@ document.body.addEventListener('htmx:swapError', (evt) => {
   const target = detail.target;
   const xhr = detail.xhr;
   const responseUrl = (xhr && xhr.responseURL) || '';
+  const targetId = target && target.id;
 
-  // If the modal target was detached during a list refresh, recreate it and retry once.
-  const targetMissing = !target || !target.isConnected || (target.id === 'card-modal' && !document.getElementById('card-modal'));
+  const targetMissing = !target || !target.isConnected || (targetId === 'card-modal' && !document.getElementById('card-modal'));
   const isCardModal = responseUrl.includes('/card/modal');
   if (targetMissing && isCardModal && lastCardItemId && !cardModalRetryInFlight) {
     cardModalRetryInFlight = true;
@@ -284,7 +294,13 @@ document.body.addEventListener('htmx:swapError', (evt) => {
     return;
   }
 
-  if (target && target.id === 'card-modal') {
+  // If the items target was detached mid-swap, refresh the list to recover.
+  if (targetMissing && (targetId === 'items' || responseUrl.includes('/batch/'))) {
+    htmx.trigger(document.body, 'refresh-items');
+    return;
+  }
+
+  if (targetId === 'card-modal') {
     ensureCardModalTarget().innerHTML = '';
   }
 });
@@ -293,6 +309,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initUserName();
   initRealtime();
 });
+
+
+
+
 
 
 
