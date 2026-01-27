@@ -21,16 +21,17 @@
   </div>
   <div class="qty-col">{{ qty_remaining }} of {{ item.qty_required }}</div>
   <div>
-    <button class="action-btn pick" hx-post="/items/{{ item.id }}/pick" hx-target="closest .item-row" hx-swap="outerHTML" hx-include="#filters" onclick="showToast('Picked {{ item.card_name }}', '/items/{{ item.id }}/undo', {{ item.id }})">Picked</button>
+    <button class="action-btn pick" hx-post="/items/{{ item.id }}/pick" hx-target="this" hx-swap="none" hx-include="#filters" hx-on::after-request="refreshItem({{ item.id }})" onclick="showToast('Picked {{ item.card_name }}', '/items/{{ item.id }}/undo', {{ item.id }})">Picked</button>
   </div>
   <div>
     {% if item.is_missing %}
-      <button class="action-btn" hx-post="/items/{{ item.id }}/unmissing" hx-target="closest .item-row" hx-swap="outerHTML" hx-include="#filters">Unmissing</button>
+      <button class="action-btn" hx-post="/items/{{ item.id }}/unmissing" hx-target="this" hx-swap="none" hx-include="#filters" hx-on::after-request="refreshItem({{ item.id }})">Unmissing</button>
     {% else %}
       <button class="action-btn missing" onclick="markMissing({{ item.id }})">Missing</button>
     {% endif %}
   </div>
 </div>
+
 
 
 
