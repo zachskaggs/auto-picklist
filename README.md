@@ -9,6 +9,7 @@ This repo is documented for Docker deployment only.
 1) Create a `.env` file (or edit the existing one):
 
 ```env
+HOST_PORT=8000
 SESSION_SECRET=change-me
 SETTINGS_PIN=1234
 MANAPOOL_EMAIL=you@example.com
@@ -27,10 +28,16 @@ MANAPOOL_ACCESS_TOKEN=mpat_xxx
 docker build -t picklist:local .
 ```
 
-3) Run the container using the `.env` file:
+3) Run with Docker Compose (recommended):
 
 ```bash
-docker run --rm -p 8000:8000 --env-file .env picklist:local
+docker compose up --build
+```
+
+4) Or run directly with Docker:
+
+```bash
+docker run --rm -p ${HOST_PORT:-8000}:8000 --env-file .env picklist:local
 ```
 
 Open: http://localhost:8000
@@ -58,6 +65,7 @@ Required:
 - `SESSION_SECRET`
 
 Common optional:
+- `HOST_PORT` (host port for docker compose; default `8000`)
 - `MANAPOOL_BASE_URL` (default `https://manapool.com/api/v1`)
 - `MANAPOOL_RECENT_MINUTES` (warn on rapid re-generation; default `10`)
 - `MANAPOOL_MAX_WORKERS` (detail fetch concurrency; default `4`)
