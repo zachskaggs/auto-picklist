@@ -275,17 +275,24 @@ function generateManaPoolPicklist() {
     });
 }
 
-let lastScrollY = window.scrollY;
+let scrollTicking = false;
 window.addEventListener('scroll', () => {
-  const header = document.querySelector('.header');
-  if (!header) return;
-  const current = window.scrollY;
-  if (current > 40 && current > lastScrollY) {
-    header.classList.add('header-compact');
-  } else {
-    header.classList.remove('header-compact');
-  }
-  lastScrollY = current;
+  if (scrollTicking) return;
+  scrollTicking = true;
+  requestAnimationFrame(() => {
+    const header = document.querySelector('.header');
+    if (!header) {
+      scrollTicking = false;
+      return;
+    }
+    const current = window.scrollY;
+    if (current > 80) {
+      header.classList.add('header-compact');
+    } else {
+      header.classList.remove('header-compact');
+    }
+    scrollTicking = false;
+  });
 });
 
 htmx.on('batch-counts-changed', () => {
