@@ -1,7 +1,7 @@
-{% set current_set = None %}
+{% set ns = namespace(current_set=None) %}
 {% for item in items %}
-  {% if item.set_code != current_set %}
-    {% if current_set is not none %}
+  {% if item.set_code != ns.current_set %}
+    {% if ns.current_set is not none %}
         </div>
       </div>
     {% endif %}
@@ -23,11 +23,11 @@
   {% endif %}
   {% set qty_remaining = item.qty_remaining %}
   {% include "partials/item_row.html" %}
-  {% set current_set = item.set_code %}
+  {% set ns.current_set = item.set_code %}
 {% else %}
   <div class="item-row">No items</div>
 {% endfor %}
-{% if current_set is not none %}
+{% if ns.current_set is not none %}
     </div>
   </div>
 {% endif %}
