@@ -1,32 +1,29 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="header">
-  <div class="title">Batch: {{ batch.name }}</div>
+  <div class="title header-hideable">Batch: {{ batch.name }}</div>
   <div class="header-right">
-    <div class="name-box">
+    <div class="name-box header-hideable">
       <label class="name-label" for="user-name">Name</label>
       <input id="user-name" class="input name-input" type="text" value="anonymous" />
     </div>
-    <a class="btn secondary" href="/">Back to batches</a>
-    <a class="btn secondary" href="/batch/{{ batch.id }}/events">Audit log</a>
-    <a class="btn secondary" href="/batch/{{ batch.id }}/missing">Missing</a>
-    <form method="post" action="/batch/{{ batch.id }}/close" style="display:inline;">
-      <button class="btn danger" type="submit">Close batch</button>
+    <div id="batch-counts" class="header-counts" data-url="/batch/{{ batch.id }}/counts" hx-get="/batch/{{ batch.id }}/counts" hx-trigger="load">
+      Loading...
+    </div>
+    <form id="filters" class="filters header-filters" hx-get="/batch/{{ batch.id }}/items" hx-target="#items" hx-trigger="change, keyup changed delay:400ms">
+      <label><input type="checkbox" name="show_picked" value="1" /> Show picked</label>
+      <label><input type="checkbox" name="show_missing" value="1" /> Show missing only</label>
+      <label><input type="checkbox" name="show_all" value="1" /> Show all</label>
     </form>
+    <div class="header-actions header-hideable">
+      <a class="btn secondary" href="/">Back to batches</a>
+      <a class="btn secondary" href="/batch/{{ batch.id }}/events">Audit log</a>
+      <a class="btn secondary" href="/batch/{{ batch.id }}/missing">Missing</a>
+      <form method="post" action="/batch/{{ batch.id }}/close" style="display:inline;">
+        <button class="btn danger" type="submit">Close batch</button>
+      </form>
+    </div>
   </div>
-</div>
-
-<div id="batch-counts" data-url="/batch/{{ batch.id }}/counts" hx-get="/batch/{{ batch.id }}/counts" hx-trigger="load">
-  Loading...
-</div>
-
-<div class="panel" style="margin: 16px;">
-  <form id="filters" class="filters" hx-get="/batch/{{ batch.id }}/items" hx-target="#items" hx-trigger="change, keyup changed delay:400ms">
-    <input class="input" type="text" name="q" placeholder="Search card" />
-    <label><input type="checkbox" name="show_picked" value="1" /> Show picked</label>
-    <label><input type="checkbox" name="show_missing" value="1" /> Show missing only</label>
-    <label><input type="checkbox" name="show_all" value="1" /> Show all (picked + missing)</label>
-  </form>
 </div>
 
 <div id="items" class="panel" data-url="/batch/{{ batch.id }}/items" data-batch-id="{{ batch.id }}" hx-get="/batch/{{ batch.id }}/items" hx-trigger="load">

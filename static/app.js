@@ -281,9 +281,9 @@ window.addEventListener('scroll', () => {
   if (!header) return;
   const current = window.scrollY;
   if (current > 40 && current > lastScrollY) {
-    header.classList.add('header-hidden');
+    header.classList.add('header-compact');
   } else {
-    header.classList.remove('header-hidden');
+    header.classList.remove('header-compact');
   }
   lastScrollY = current;
 });
@@ -296,7 +296,7 @@ htmx.on('batch-counts-changed', () => {
     .then((html) => {
       const current = document.getElementById('batch-counts');
       if (!current) return;
-      current.outerHTML = html;
+      current.innerHTML = html;
     });
 });
 
