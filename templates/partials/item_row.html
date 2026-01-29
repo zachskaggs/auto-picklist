@@ -12,6 +12,9 @@
     {% if show_missing and item.order_refs %}
       <div class="missing-order">{{ item.order_refs }}</div>
     {% endif %}
+    {% if show_missing and item.missing_note %}
+      <div class="missing-order">{{ item.missing_note }}</div>
+    {% endif %}
     
   </div>
   <div class="set-code" data-set-code="{{ item.set_code }}">

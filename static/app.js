@@ -159,6 +159,10 @@ function refreshItem(itemId) {
     row = document.getElementById(`item-${itemId}`);
     if (row && row.parentNode) {
       row.outerHTML = html;
+      const updated = document.getElementById(`item-${itemId}`);
+      if (updated) {
+        htmx.process(updated);
+      }
     } else if (items && !document.getElementById(`item-${itemId}`)) {
       // If the row is missing, refresh the full list to preserve sort order.
       htmx.trigger(document.body, 'refresh-items');
@@ -286,6 +290,7 @@ htmx.on('refresh-items', () => {
       const current = document.getElementById('items');
       if (!current) return;
       current.innerHTML = html;
+      htmx.process(current);
     });
 });
 

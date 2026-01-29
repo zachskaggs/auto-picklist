@@ -244,13 +244,20 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
 
     aggregated = {}
     for item in raw_items:
+        single = item.get('single') or {}
         scryfall_id = item['scryfall_id']
-        aggregated.setdefault(scryfall_id, {'quantity': 0, 'single': item.get('single'), 'names': set(), 'refs': set()})
-        aggregated[scryfall_id]['quantity'] += item.get('quantity', 1)
+        key = (
+            scryfall_id,
+            single.get('condition_id'),
+            single.get('language_id'),
+            single.get('finish_id'),
+        )
+        aggregated.setdefault(key, {'quantity': 0, 'single': single, 'names': set(), 'refs': set(), 'scryfall_id': scryfall_id})
+        aggregated[key]['quantity'] += item.get('quantity', 1)
         if item.get('ship_name'):
-            aggregated[scryfall_id]['names'].add(item['ship_name'])
+            aggregated[key]['names'].add(item['ship_name'])
         if item.get('order_ref'):
-            aggregated[scryfall_id]['refs'].add(item['order_ref'])
+            aggregated[key]['refs'].add(item['order_ref'])
 
     batch_name = f"ManaPool Unfulfilled - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
     source_payload = {
@@ -268,9 +275,10 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
         )
         batch_id = conn.execute('SELECT last_insert_rowid() AS id').fetchone()['id']
 
-        for scryfall_id, info in aggregated.items():
+        for _, info in aggregated.items():
             qty_required = info['quantity']
             single = info.get('single') or {}
+            scryfall_id = info['scryfall_id']
             card = scryfall.fetch_card_by_id(conn, scryfall_id)
             card_name = None
             set_code = None
