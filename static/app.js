@@ -130,14 +130,36 @@ function reserveSet(setCode) {
 }
 
 function applyReservation(setCode, reservedBy) {
-  document.querySelectorAll(`.set-code[data-set-code="${setCode}"]`).forEach((el) => {
-    const existing = el.querySelector('.reserve-badge');
+  document.querySelectorAll(`.set-group[data-set-code="${setCode}"]`).forEach((group) => {
+    const actions = group.querySelector('.set-actions');
+    if (!actions) return;
+    const existing = actions.querySelector('.reserve-badge');
     if (existing) existing.remove();
     if (reservedBy) {
       const badge = document.createElement('span');
       badge.className = 'reserve-badge';
       badge.textContent = `Reserved by ${reservedBy}`;
-      el.appendChild(badge);
+      actions.prepend(badge);
+    }
+  });
+}
+
+function toggleSetGroup(setCode) {
+  const group = document.querySelector(`.set-group[data-set-code="${setCode}"]`);
+  if (!group) return;
+  group.classList.toggle('collapsed');
+  const key = `set_collapsed_${setCode || 'unknown'}`;
+  localStorage.setItem(key, group.classList.contains('collapsed') ? '1' : '0');
+}
+
+function applySetCollapseState(root = document) {
+  root.querySelectorAll('.set-group').forEach((group) => {
+    const setCode = group.dataset.setCode || 'unknown';
+    const key = `set_collapsed_${setCode}`;
+    if (localStorage.getItem(key) === '1') {
+      group.classList.add('collapsed');
+    } else {
+      group.classList.remove('collapsed');
     }
   });
 }
@@ -291,6 +313,7 @@ htmx.on('refresh-items', () => {
       if (!current) return;
       current.innerHTML = html;
       htmx.process(current);
+      applySetCollapseState(current);
     });
 });
 
@@ -324,6 +347,7 @@ document.body.addEventListener('htmx:swapError', (evt) => {
 document.addEventListener('DOMContentLoaded', () => {
   initUserName();
   initRealtime();
+  applySetCollapseState();
 });
 
 

@@ -125,6 +125,73 @@ body {
 
 .item-row.picked { opacity: 0.5; }
 
+.picklist-row {
+  grid-template-columns: 3fr 1.1fr 1fr 1fr;
+  padding-left: 24px;
+}
+
+.set-group + .set-group {
+  border-top: 1px solid #dfe9fb;
+}
+
+.set-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px;
+  background: #f7f9ff;
+  border-bottom: 1px solid #e6eefc;
+}
+
+.set-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #214a88;
+}
+
+.set-code-label {
+  letter-spacing: 1px;
+}
+
+.set-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #3f5f97;
+}
+
+.set-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapse-btn {
+  border: 1px solid #c8d6f2;
+  background: #ffffff;
+  color: #214a88;
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.collapse-btn .caret {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.set-group.collapsed .set-items {
+  display: none;
+}
+
+.set-group.collapsed .collapse-btn .caret {
+  transform: rotate(-90deg);
+}
+
 .qty-col {
   font-weight: 700;
   color: #1f3f7a;
@@ -187,6 +254,7 @@ body {
 }
 
 .action-btn.pick { background: var(--accent-2); color: white; }
+.action-btn.undo { background: #94a3b8; color: #0f172a; }
 .action-btn.missing { background: var(--danger); color: white; }
 
 .badge {
@@ -295,6 +363,9 @@ body {
   .batch-row { grid-template-columns: 1fr 100px; grid-auto-rows: auto; }
   .filters { grid-template-columns: 1fr 1fr; }
   .item-row { grid-template-columns: 2fr 0.9fr 1.1fr 1fr 1fr; grid-auto-rows: auto; }
+  .picklist-row { grid-template-columns: 2fr 1.1fr 1fr 1fr; }
+  .set-row { grid-template-columns: 1fr; gap: 10px; }
+  .set-actions { flex-wrap: wrap; justify-content: flex-start; }
 }
 
 

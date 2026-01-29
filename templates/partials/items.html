@@ -1,9 +1,33 @@
-{% set prev_set = None %}
+{% set current_set = None %}
 {% for item in items %}
+  {% if item.set_code != current_set %}
+    {% if current_set is not none %}
+        </div>
+      </div>
+    {% endif %}
+    <div class="set-group" data-set-code="{{ item.set_code }}">
+      <div class="set-row">
+        <div class="set-title">
+          <span class="set-code-label">{{ item.set_code|upper if item.set_code else 'UNKNOWN' }}</span>
+          {% if item.set_name %}<span class="set-name">{{ item.set_name }}</span>{% endif %}
+        </div>
+        <div class="set-actions">
+          {% if item.reserved_by %}<span class="reserve-badge">Reserved by {{ item.reserved_by }}</span>{% endif %}
+          <button class="reserve-btn" onclick="reserveSet('{{ item.set_code }}')">Reserve set</button>
+          <button class="collapse-btn" type="button" onclick="toggleSetGroup('{{ item.set_code }}')">
+            <span class="caret">▾</span>
+          </button>
+        </div>
+      </div>
+      <div class="set-items">
+  {% endif %}
   {% set qty_remaining = item.qty_remaining %}
-  {% set show_reserve = item.set_code != prev_set %}
   {% include "partials/item_row.html" %}
-  {% set prev_set = item.set_code %}
+  {% set current_set = item.set_code %}
 {% else %}
   <div class="item-row">No items</div>
 {% endfor %}
+{% if current_set is not none %}
+    </div>
+  </div>
+{% endif %}

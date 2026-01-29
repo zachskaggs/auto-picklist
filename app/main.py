@@ -425,6 +425,26 @@ def _backfill_order_names(conn, batch_id, order_ids):
             )
     conn.commit()
 
+def _set_name_map(conn, scryfall_ids):
+    if not scryfall_ids:
+        return {}
+    placeholders = ','.join('?' for _ in scryfall_ids)
+    rows = conn.execute(
+        f"SELECT data_json FROM card_cache WHERE scryfall_id IN ({placeholders})",
+        scryfall_ids,
+    ).fetchall()
+    set_names = {}
+    for r in rows:
+        try:
+            data = json.loads(r['data_json'])
+        except Exception:
+            continue
+        code = (data.get('set') or '').lower()
+        name = data.get('set_name')
+        if code and name and code not in set_names:
+            set_names[code] = name
+    return set_names
+
 
 @app.get('/batch/{batch_id}/counts', response_class=HTMLResponse)
 def batch_counts(request: Request, batch_id: int, auth=Depends(require_auth)):
@@ -465,10 +485,12 @@ def batch_items(request: Request, batch_id: int, game: str = '', q: str = '', sh
         sql = f"SELECT * FROM batch_items WHERE {' AND '.join(where)}"
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
         reservations = _reservation_map(conn, batch_id)
+        set_names = _set_name_map(conn, [r['scryfall_id'] for r in rows if r.get('scryfall_id')])
     rows = sort_items(rows)
     for r in rows:
         r['qty_remaining'] = remaining_qty(r)
         r['reserved_by'] = reservations.get(r['set_code'])
+        r['set_name'] = set_names.get(r['set_code'])
     return TEMPLATES.TemplateResponse('partials/items.html', {'request': request, 'items': rows, 'show_picked': bool(show_picked), 'show_missing': bool(show_missing)})
 
 
@@ -487,7 +509,7 @@ def item_row(request: Request, item_id: int, show_picked: int = 0, show_missing:
         reservations = _reservation_map(conn, item['batch_id'])
         item['reserved_by'] = reservations.get(item['set_code'])
     item['qty_remaining'] = remaining_qty(item)
-    return TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': item, 'qty_remaining': item['qty_remaining'], 'show_reserve': True, 'show_missing': bool(show_missing)})
+    return TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': item, 'qty_remaining': item['qty_remaining'], 'show_reserve': True, 'show_missing': bool(show_missing), 'show_picked': bool(show_picked)})
 
 
 @app.post('/batch/{batch_id}/reserve-set')
@@ -534,7 +556,7 @@ async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_m
             resp = HTMLResponse('')
             resp.headers['HX-Trigger'] = 'batch-counts-changed'
             return resp
-    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing)})
+    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing), 'show_picked': bool(show_picked)})
     resp.headers['HX-Trigger'] = 'batch-counts-changed'
     return resp
 
@@ -562,7 +584,7 @@ async def undo_pick(request: Request, item_id: int, show_picked: int = 0, show_m
             resp = HTMLResponse('')
             resp.headers['HX-Trigger'] = 'batch-counts-changed'
             return resp
-    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing)})
+    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing), 'show_picked': bool(show_picked)})
     resp.headers['HX-Trigger'] = 'batch-counts-changed'
     return resp
 
@@ -585,7 +607,7 @@ async def mark_missing(request: Request, item_id: int, note: str = Form(''), sho
             resp = HTMLResponse('')
             resp.headers['HX-Trigger'] = 'batch-counts-changed'
             return resp
-    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing)})
+    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing), 'show_picked': bool(show_picked)})
     resp.headers['HX-Trigger'] = 'batch-counts-changed'
     return resp
 
@@ -608,7 +630,7 @@ async def unmark_missing(request: Request, item_id: int, show_picked: int = 0, s
             resp = HTMLResponse('')
             resp.headers['HX-Trigger'] = 'batch-counts-changed'
             return resp
-    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing)})
+    resp = TEMPLATES.TemplateResponse('partials/item_row.html', {'request': request, 'item': dict(item), 'qty_remaining': qty_rem, 'show_reserve': True, 'show_missing': bool(show_missing), 'show_picked': bool(show_picked)})
     resp.headers['HX-Trigger'] = 'batch-counts-changed'
     return resp
 

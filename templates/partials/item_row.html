@@ -1,4 +1,4 @@
-﻿<div id="item-{{ item.id }}" class="item-row {% if qty_remaining == 0 %}picked{% endif %}" data-item-id="{{ item.id }}" data-set-code="{{ item.set_code }}">
+<div id="item-{{ item.id }}" class="item-row picklist-row {% if qty_remaining == 0 %}picked{% endif %}" data-item-id="{{ item.id }}" data-set-code="{{ item.set_code }}">
   <div class="item-main" onclick="openCard({{ item.id }})">
     <div class="item-name {% if item.printing and item.printing|lower == 'foil' %}foil-name{% endif %}">{{ item.card_name }}{% if item.collector_number %} ({{ item.collector_number }}){% endif %}</div>
     {% if item.condition %}
@@ -17,14 +17,14 @@
     {% endif %}
     
   </div>
-  <div class="set-code" data-set-code="{{ item.set_code }}">
-    {{ item.set_code|upper }}
-    {% if item.reserved_by %}<span class="reserve-badge">Reserved by {{ item.reserved_by }}</span>{% endif %}
-    {% if show_reserve %}<button class="reserve-btn" onclick="reserveSet('{{ item.set_code }}')">Reserve set</button>{% endif %}
-  </div>
+
   <div class="qty-col">{{ qty_remaining }} of {{ item.qty_required }}</div>
   <div>
-    <button class="action-btn pick" hx-post="/items/{{ item.id }}/pick" hx-target="this" hx-swap="none" hx-include="#filters" hx-on::after-request="refreshItem({{ item.id }})" onclick="showToast('Picked {{ item.card_name }}', '/items/{{ item.id }}/undo', {{ item.id }})">Picked</button>
+    {% if show_picked and qty_remaining == 0 %}
+      <button class="action-btn undo" hx-post="/items/{{ item.id }}/undo" hx-target="this" hx-swap="none" hx-include="#filters" hx-on::after-request="refreshItem({{ item.id }})">Unpick</button>
+    {% else %}
+      <button class="action-btn pick" hx-post="/items/{{ item.id }}/pick" hx-target="this" hx-swap="none" hx-include="#filters" hx-on::after-request="refreshItem({{ item.id }})" onclick="showToast('Picked {{ item.card_name }}', '/items/{{ item.id }}/undo', {{ item.id }})">Picked</button>
+    {% endif %}
   </div>
   <div>
     {% if item.is_missing %}
@@ -34,6 +34,7 @@
     {% endif %}
   </div>
 </div>
+
 
 
 
