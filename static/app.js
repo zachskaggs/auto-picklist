@@ -164,6 +164,15 @@ function applySetCollapseState(root = document) {
   });
 }
 
+function pruneEmptySetGroups(root = document) {
+  root.querySelectorAll('.set-group').forEach((group) => {
+    const items = group.querySelectorAll('.picklist-row');
+    if (!items.length) {
+      group.remove();
+    }
+  });
+}
+
 function refreshItem(itemId) {
   const items = document.getElementById('items');
   const form = document.getElementById('filters');
@@ -174,6 +183,7 @@ function refreshItem(itemId) {
     let row = document.getElementById(`item-${itemId}`);
     if (resp.status === 204) {
       if (row && row.parentNode) row.remove();
+      pruneEmptySetGroups(document);
       return;
     }
     const html = (await resp.text()).trim();
@@ -185,6 +195,7 @@ function refreshItem(itemId) {
       if (updated) {
         htmx.process(updated);
       }
+      pruneEmptySetGroups(document);
     } else if (items && !document.getElementById(`item-${itemId}`)) {
       // If the row is missing, refresh the full list to preserve sort order.
       htmx.trigger(document.body, 'refresh-items');
@@ -321,6 +332,7 @@ htmx.on('refresh-items', () => {
       current.innerHTML = html;
       htmx.process(current);
       applySetCollapseState(current);
+      pruneEmptySetGroups(current);
     });
 });
 
