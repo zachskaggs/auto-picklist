@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . ./
 
 RUN mkdir -p /app/data/cache/images \
+    && date -u +"%Y-%m-%dT%H:%M:%SZ" > /app/BUILD_DATE \
     && python scripts/init_db.py \
     && python scripts/seed_demo.py
 

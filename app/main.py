@@ -15,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.status import HTTP_302_FOUND, HTTP_204_NO_CONTENT
 
 from .env import load_optional_dotenv
+from .build_info import get_version, get_build_date
 from .db import init_db, get_conn
 from .logic import sort_items, remaining_qty
 from . import manapool, scryfall
@@ -835,8 +836,8 @@ def health_view(request: Request, auth=Depends(require_auth)):
         'cache_count': cache_count,
         'last_sync': last_sync,
         'batch_orders': batch_orders,
-        'app_version': os.getenv('APP_VERSION', 'dev'),
-        'build_date': os.getenv('BUILD_DATE', 'unknown'),
+        'app_version': get_version(),
+        'build_date': get_build_date(),
     })
 
 
