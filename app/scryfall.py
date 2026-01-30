@@ -1,4 +1,8 @@
 import os
+
+from .env import load_optional_dotenv
+
+load_optional_dotenv()
 import json
 from pathlib import Path
 import requests

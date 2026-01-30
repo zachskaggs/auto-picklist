@@ -1,5 +1,22 @@
-﻿services:
+services:
   picklist:
     build: .
     ports:
       - "${HOST_PORT:-8000}:8000"
+    # Pass stack/env vars into the container; Portainer UI vars are otherwise only compose substitutions.
+    environment:
+      APP_HOST: ${APP_HOST:-0.0.0.0}
+      APP_PORT: ${APP_PORT:-8000}
+      DB_PATH: ${DB_PATH:-/app/data/app.db}
+      SESSION_SECRET: ${SESSION_SECRET:-change-me}
+      SETTINGS_PIN: ${SETTINGS_PIN:-1234}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER:-}
+      BASIC_AUTH_PASS: ${BASIC_AUTH_PASS:-}
+      MANAPOOL_EMAIL: ${MANAPOOL_EMAIL:-}
+      MANAPOOL_ACCESS_TOKEN: ${MANAPOOL_ACCESS_TOKEN:-}
+      MANAPOOL_BASE_URL: ${MANAPOOL_BASE_URL:-https://manapool.com/api/v1}
+      MANAPOOL_RECENT_MINUTES: ${MANAPOOL_RECENT_MINUTES:-10}
+      MANAPOOL_MAX_WORKERS: ${MANAPOOL_MAX_WORKERS:-4}
+      SCRYFALL_BASE_URL: ${SCRYFALL_BASE_URL:-https://api.scryfall.com}
+      SCRYFALL_IMAGE_SIZE: ${SCRYFALL_IMAGE_SIZE:-normal}
+      LOAD_DOTENV: ${LOAD_DOTENV:-0}

@@ -1,4 +1,8 @@
 import os
+
+from .env import load_optional_dotenv
+
+load_optional_dotenv()
 import time
 import requests
 

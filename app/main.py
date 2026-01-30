@@ -14,9 +14,12 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.status import HTTP_302_FOUND, HTTP_204_NO_CONTENT
 
+from .env import load_optional_dotenv
 from .db import init_db, get_conn
 from .logic import sort_items, remaining_qty
 from . import manapool, scryfall
+
+load_optional_dotenv()
 
 APP_HOST = os.getenv('APP_HOST', '0.0.0.0')
 APP_PORT = int(os.getenv('APP_PORT', '8000'))
