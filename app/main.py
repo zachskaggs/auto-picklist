@@ -835,6 +835,8 @@ def health_view(request: Request, auth=Depends(require_auth)):
         'cache_count': cache_count,
         'last_sync': last_sync,
         'batch_orders': batch_orders,
+        'app_version': os.getenv('APP_VERSION', 'dev'),
+        'build_date': os.getenv('BUILD_DATE', 'unknown'),
     })
 
 
