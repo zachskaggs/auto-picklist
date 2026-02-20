@@ -147,6 +147,42 @@ def _map_condition(cond_id):
     }.get(cond_id)
 
 
+def _to_float(value):
+    try:
+        if value is None or value == '':
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _extract_purchase_price(item, single):
+    item = item or {}
+    single = single or {}
+    direct_keys = (
+        'purchase_price',
+        'unit_price',
+        'price',
+        'value',
+    )
+    cents_keys = (
+        'purchase_price_cents',
+        'unit_price_cents',
+        'price_cents',
+        'value_cents',
+    )
+    for source in (item, single):
+        for key in direct_keys:
+            price = _to_float(source.get(key))
+            if price is not None and price >= 0:
+                return price
+        for key in cents_keys:
+            cents = _to_float(source.get(key))
+            if cents is not None and cents >= 0:
+                return cents / 100.0
+    return None
+
+
 @app.on_event('startup')
 def on_startup():
     init_db()
@@ -237,6 +273,7 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
                 raw_items.append({
                     'scryfall_id': scryfall_id,
                     'quantity': qty,
+                    'purchase_price': _extract_purchase_price(item, single),
                     'single': single,
                     'ship_name': ship_name,
                     'order_ref': order_ref,
@@ -260,8 +297,24 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
             single.get('language_id'),
             single.get('finish_id'),
         )
-        aggregated.setdefault(key, {'quantity': 0, 'single': single, 'names': set(), 'refs': set(), 'scryfall_id': scryfall_id})
-        aggregated[key]['quantity'] += item.get('quantity', 1)
+        aggregated.setdefault(
+            key,
+            {
+                'quantity': 0,
+                'single': single,
+                'names': set(),
+                'refs': set(),
+                'scryfall_id': scryfall_id,
+                'price_total': 0.0,
+                'price_qty': 0,
+            },
+        )
+        qty = item.get('quantity', 1)
+        aggregated[key]['quantity'] += qty
+        price = item.get('purchase_price')
+        if price is not None:
+            aggregated[key]['price_total'] += float(price) * qty
+            aggregated[key]['price_qty'] += qty
         if item.get('ship_name'):
             aggregated[key]['names'].add(item['ship_name'])
         if item.get('order_ref'):
@@ -305,9 +358,12 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
 
             order_names = ', '.join(sorted(info.get('names') or []))
             order_refs = '; '.join(sorted(info.get('refs') or []))
+            purchase_price = None
+            if info.get('price_qty', 0) > 0:
+                purchase_price = round(info['price_total'] / info['price_qty'], 2)
 
             conn.execute(
-                'INSERT INTO batch_items (batch_id, game, set_code, card_name, collector_number, scryfall_id, qty_required, qty_picked, condition, language, printing, order_names, order_refs, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO batch_items (batch_id, game, set_code, card_name, collector_number, scryfall_id, qty_required, qty_picked, condition, language, printing, order_names, order_refs, purchase_price, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)',
                 (
                     batch_id,
                     'Magic',
@@ -321,6 +377,7 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
                     _map_finish(single.get('finish_id')),
                     order_names or None,
                     order_refs or None,
+                    purchase_price,
                     _utc_now(),
                 ),
             )
@@ -538,6 +595,7 @@ def _assisted_snapshot(conn, batch_id, mode, excluded_ids=None):
             'condition': current.get('condition'),
             'language': current.get('language'),
             'printing': current.get('printing'),
+            'purchase_price': current.get('purchase_price'),
             'qty_required': current.get('qty_required', 0),
             'qty_picked': current.get('qty_picked', 0),
             'qty_remaining': current.get('qty_remaining', 0),
@@ -947,7 +1005,7 @@ def import_csv(request: Request, file: UploadFile = File(...), auth=Depends(requ
                 batch_map[batch_name] = batch_id
             batch_id = batch_map[batch_name]
             conn.execute(
-                'INSERT INTO batch_items (batch_id, game, set_code, card_name, collector_number, qty_required, qty_picked, condition, language, printing, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)',
+                'INSERT INTO batch_items (batch_id, game, set_code, card_name, collector_number, qty_required, qty_picked, condition, language, printing, purchase_price, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)',
                 (
                     batch_id,
                     row.get('game') or '',
@@ -958,6 +1016,7 @@ def import_csv(request: Request, file: UploadFile = File(...), auth=Depends(requ
                     row.get('condition') or None,
                     row.get('language') or None,
                     row.get('printing') or None,
+                    _to_float(row.get('purchase_price')),
                     _utc_now(),
                 ),
             )

@@ -1,4 +1,4 @@
-<div id="item-{{ item.id }}" class="item-row picklist-row {% if qty_remaining == 0 %}picked{% endif %}" data-item-id="{{ item.id }}" data-set-code="{{ item.set_code }}">
+<div id="item-{{ item.id }}" class="item-row picklist-row {% if qty_remaining == 0 %}picked{% endif %} {% if item.purchase_price is not none and item.purchase_price > 5 %}high-value-card{% endif %}" data-item-id="{{ item.id }}" data-set-code="{{ item.set_code }}">
   <div class="item-main" onclick="openCard({{ item.id }})">
     <div class="item-title">
       <span class="item-name {% if item.printing and item.printing|lower == 'foil' %}foil-name{% endif %}">{{ item.card_name }}{% if item.collector_number %} ({{ item.collector_number }}){% endif %}</span>
@@ -9,6 +9,9 @@
         {% if item.language %}<span class="badge badge-lang">{{ item.language }}</span>{% endif %}
         {% if item.printing %}
           <span class="badge {% if item.printing|lower == 'foil' %}badge-foil{% else %}badge-printing{% endif %}">{{ item.printing }}</span>
+        {% endif %}
+        {% if item.purchase_price is not none %}
+          <span class="badge badge-price">${{ '%.2f'|format(item.purchase_price) }}</span>
         {% endif %}
         {% if item.is_missing %}<span class="badge badge-missing">MISSING</span>{% endif %}
       </span>

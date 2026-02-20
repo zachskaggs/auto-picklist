@@ -302,6 +302,7 @@ function renderAssistedSnapshot(data) {
 
   if (data.done) {
     assistedCurrentItemId = null;
+    layout.classList.remove('assisted-high-value');
     layout.style.display = 'none';
     done.style.display = 'block';
     return;
@@ -318,6 +319,7 @@ function renderAssistedSnapshot(data) {
   const number = document.getElementById('assisted-card-number');
   const setCode = document.getElementById('assisted-set-code');
   const finish = document.getElementById('assisted-finish');
+  const price = document.getElementById('assisted-price');
   const qty = document.getElementById('assisted-qty');
   const image = document.getElementById('assisted-card-image');
   const noImage = document.getElementById('assisted-no-image');
@@ -335,9 +337,17 @@ function renderAssistedSnapshot(data) {
   number.textContent = data.item.collector_number || 'Unknown';
   setCode.textContent = data.item.set_code || 'Unknown';
   finish.textContent = data.item.printing || 'Normal';
+  if (typeof data.item.purchase_price === 'number') {
+    price.textContent = `Purchase $${data.item.purchase_price.toFixed(2)}`;
+    price.style.display = 'block';
+  } else {
+    price.textContent = '';
+    price.style.display = 'none';
+  }
 
   qty.textContent = `Remaining ${data.item.qty_remaining} of ${data.item.qty_required}`;
   pickAll.style.display = data.item.qty_remaining > 1 ? 'block' : 'none';
+  layout.classList.toggle('assisted-high-value', typeof data.item.purchase_price === 'number' && data.item.purchase_price > 5);
 
   if (data.item.image_url) {
     image.onerror = () => {
