@@ -30,7 +30,7 @@ BASIC_AUTH_USER = os.getenv('BASIC_AUTH_USER')
 BASIC_AUTH_PASS = os.getenv('BASIC_AUTH_PASS')
 
 MANAPOOL_RECENT_MINUTES = int(os.getenv('MANAPOOL_RECENT_MINUTES', '10'))
-MANAPOOL_MAX_WORKERS = int(os.getenv('MANAPOOL_MAX_WORKERS', '4'))
+MANAPOOL_MAX_WORKERS = int(os.getenv('MANAPOOL_MAX_WORKERS', '8'))
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
@@ -203,6 +203,7 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
     errors = []
     warnings = []
     raw_items = []
+    cache_rows = []
     line_items_total = 0
 
     def _fetch(order_id):
@@ -219,12 +220,7 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
             order = (data or {}).get('order') or {}
             items = order.get('items') or []
             ship_name = (order.get('shipping_address') or {}).get('name')
-            with get_conn() as conn:
-                conn.execute(
-                    'INSERT OR REPLACE INTO manapool_orders_cache (order_id, raw_json, fetched_at) VALUES (?, ?, ?)',
-                    (order_id, json.dumps(data), _utc_now()),
-                )
-                conn.commit()
+            cache_rows.append((order_id, json.dumps(data), _utc_now()))
             order_label = order.get('label')
             for item in items:
                 qty = int(item.get('quantity') or 1)
@@ -245,6 +241,14 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
                     'ship_name': ship_name,
                     'order_ref': order_ref,
                 })
+
+    if cache_rows:
+        with get_conn() as conn:
+            conn.executemany(
+                'INSERT OR REPLACE INTO manapool_orders_cache (order_id, raw_json, fetched_at) VALUES (?, ?, ?)',
+                cache_rows,
+            )
+            conn.commit()
 
     aggregated = {}
     for item in raw_items:
@@ -278,12 +282,13 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
             (batch_name, 'open', 'manapool', _utc_now(), _utc_now(), json.dumps(source_payload)),
         )
         batch_id = conn.execute('SELECT last_insert_rowid() AS id').fetchone()['id']
+        scryfall_card_map = scryfall.fetch_cards_by_ids(conn, [info['scryfall_id'] for info in aggregated.values()])
 
         for _, info in aggregated.items():
             qty_required = info['quantity']
             single = info.get('single') or {}
             scryfall_id = info['scryfall_id']
-            card = scryfall.fetch_card_by_id(conn, scryfall_id)
+            card = scryfall_card_map.get(scryfall_id)
             card_name = None
             set_code = None
             collector_number = None

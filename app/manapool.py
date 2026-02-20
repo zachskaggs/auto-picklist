@@ -5,6 +5,7 @@ from .env import load_optional_dotenv
 load_optional_dotenv()
 import time
 import requests
+from requests.adapters import HTTPAdapter
 
 BASE_URL = os.getenv('MANAPOOL_BASE_URL', 'https://manapool.com/api/v1')
 EMAIL = os.getenv('MANAPOOL_EMAIL')
@@ -12,6 +13,9 @@ ACCESS_TOKEN = os.getenv('MANAPOOL_ACCESS_TOKEN')
 
 MAX_RETRIES = int(os.getenv('MANAPOOL_MAX_RETRIES', '3'))
 TIMEOUT_SECONDS = int(os.getenv('MANAPOOL_TIMEOUT_SECONDS', '20'))
+SESSION = requests.Session()
+SESSION.mount('https://', HTTPAdapter(pool_connections=20, pool_maxsize=20))
+SESSION.mount('http://', HTTPAdapter(pool_connections=20, pool_maxsize=20))
 
 
 def is_configured():
@@ -31,7 +35,7 @@ def _request(method, path, params=None):
     url = f"{BASE_URL}{path}"
     for attempt in range(MAX_RETRIES):
         try:
-            resp = requests.request(method, url, params=params, headers=_headers(), timeout=TIMEOUT_SECONDS)
+            resp = SESSION.request(method, url, params=params, headers=_headers(), timeout=TIMEOUT_SECONDS)
         except requests.RequestException as exc:
             last_err = str(exc)
             time.sleep(0.5 * (2 ** attempt))

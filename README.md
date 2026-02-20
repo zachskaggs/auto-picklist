@@ -17,7 +17,8 @@ MANAPOOL_ACCESS_TOKEN=mpat_xxx
 # Optional:
 # MANAPOOL_BASE_URL=https://manapool.com/api/v1
 # MANAPOOL_RECENT_MINUTES=10
-# MANAPOOL_MAX_WORKERS=4
+# MANAPOOL_MAX_WORKERS=8
+# SCRYFALL_MAX_WORKERS=8
 # BASIC_AUTH_USER=
 # BASIC_AUTH_PASS=
 ```
@@ -81,7 +82,8 @@ Common optional:
 - `HOST_PORT` (host port for docker compose; default `8000`)
 - `MANAPOOL_BASE_URL` (default `https://manapool.com/api/v1`)
 - `MANAPOOL_RECENT_MINUTES` (warn on rapid re-generation; default `10`)
-- `MANAPOOL_MAX_WORKERS` (detail fetch concurrency; default `4`)
+- `MANAPOOL_MAX_WORKERS` (ManaPool order detail fetch concurrency; default `8`)
+- `SCRYFALL_MAX_WORKERS` (Scryfall card enrichment concurrency for cache misses; default `8`)
 - `BASIC_AUTH_USER` / `BASIC_AUTH_PASS` (LAN protection)
 
 ## Health check
