@@ -264,7 +264,7 @@ function generateManaPoolPicklist() {
     .then((data) => {
       const parts = [];
       parts.push(`Orders scanned: ${data.orders_scanned}`);
-      parts.push(`Line items: ${data.line_items}`);
+      parts.push(`Total cards: ${data.total_cards ?? data.line_items}`);
       parts.push(`Unique cards: ${data.unique_cards}`);
       if (data.recent_warning) parts.push(`Warning: ${data.recent_warning}`);
       status.textContent = parts.join(' | ');

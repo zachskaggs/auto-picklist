@@ -10,7 +10,19 @@ def game_sort_key(game):
     return (1, game)
 
 
-def sort_items(items):
+def sort_items(items, sort_by='set'):
+    if (sort_by or '').lower() == 'value':
+        def _value_key(r):
+            price = r.get('purchase_price')
+            try:
+                price = float(price) if price is not None else None
+            except Exception:
+                price = None
+            has_price = 0 if price is not None else 1
+            sort_price = -price if price is not None else 0
+            return (has_price, sort_price, game_sort_key(r.get('game')), r.get('card_name') or '')
+        return sorted(items, key=_value_key)
+
     def _key(r):
         set_code = (r.get('set_code') or '').strip()
         set_missing = 1 if not set_code else 0

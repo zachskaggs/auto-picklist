@@ -21,7 +21,7 @@
   <div><strong>Last ManaPool sync:</strong> {{ last_log.started_at }} ({{ last_log.status }})</div>
   {% if last_log.summary %}
     <div class="badge">Orders: {{ last_log.summary.orders_scanned }}</div>
-    <div class="badge">Line items: {{ last_log.summary.line_items }}</div>
+    <div class="badge">Total cards: {{ last_log.summary.total_cards or last_log.summary.line_items }}</div>
     <div class="badge">Unique cards: {{ last_log.summary.unique_cards }}</div>
   {% endif %}
   {% if last_log.error_text %}

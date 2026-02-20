@@ -14,6 +14,12 @@
       <label><input type="checkbox" name="show_picked" value="1" /> Show picked</label>
       <label><input type="checkbox" name="show_missing" value="1" /> Show missing only</label>
       <label><input type="checkbox" name="show_all" value="1" /> Show all</label>
+      <label>Sort
+        <select name="sort_by">
+          <option value="set">Set</option>
+          <option value="value">Card value</option>
+        </select>
+      </label>
     </form>
     <div class="header-actions header-hideable">
       <a class="btn" href="/batch/{{ batch.id }}/assisted-pick">Assisted pick</a>

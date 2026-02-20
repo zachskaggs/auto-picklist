@@ -240,7 +240,7 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
     warnings = []
     raw_items = []
     cache_rows = []
-    line_items_total = 0
+    total_cards = 0
 
     def _fetch(order_id):
         data, fetch_err = manapool.fetch_order(order_id)
@@ -260,7 +260,7 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
             order_label = order.get('label')
             for item in items:
                 qty = int(item.get('quantity') or 1)
-                line_items_total += qty
+                total_cards += qty
                 product = item.get('product') or {}
                 single = product.get('single') or {}
                 scryfall_id = single.get('scryfall_id')
@@ -325,7 +325,8 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
         'order_ids': order_ids,
         'generated_at': _utc_now(),
         'orders_scanned': len(order_ids),
-        'line_items': line_items_total,
+        'total_cards': total_cards,
+        'line_items': total_cards,
         'unique_cards': len(aggregated),
     }
 
@@ -387,7 +388,8 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
         'batch_id': batch_id,
         'batch_name': batch_name,
         'orders_scanned': len(order_ids),
-        'line_items': line_items_total,
+        'total_cards': total_cards,
+        'line_items': total_cards,
         'unique_cards': len(aggregated),
         'warnings': warnings,
         'errors': errors,
@@ -684,14 +686,17 @@ async def assisted_action(
 @app.get('/batch/{batch_id}/counts', response_class=HTMLResponse)
 def batch_counts(request: Request, batch_id: int, auth=Depends(require_auth)):
     with get_conn() as conn:
-        total = conn.execute('SELECT COUNT(*) AS c FROM batch_items WHERE batch_id = ?', (batch_id,)).fetchone()['c']
-        remaining = conn.execute('SELECT COUNT(*) AS c FROM batch_items WHERE batch_id = ? AND qty_picked < qty_required', (batch_id,)).fetchone()['c']
+        total = conn.execute('SELECT COALESCE(SUM(qty_required), 0) AS c FROM batch_items WHERE batch_id = ?', (batch_id,)).fetchone()['c']
+        remaining = conn.execute(
+            'SELECT COALESCE(SUM(CASE WHEN qty_required > qty_picked THEN qty_required - qty_picked ELSE 0 END), 0) AS c FROM batch_items WHERE batch_id = ?',
+            (batch_id,),
+        ).fetchone()['c']
         missing = conn.execute('SELECT COUNT(*) AS c FROM batch_items WHERE batch_id = ? AND is_missing = 1', (batch_id,)).fetchone()['c']
     return TEMPLATES.TemplateResponse('partials/counts.html', {'request': request, 'total': total, 'remaining': remaining, 'missing': missing})
 
 
 @app.get('/batch/{batch_id}/items', response_class=HTMLResponse)
-def batch_items(request: Request, batch_id: int, game: str = '', q: str = '', show_picked: int = 0, show_missing: int = 0, show_all: int = 0, auth=Depends(require_auth)):
+def batch_items(request: Request, batch_id: int, game: str = '', q: str = '', show_picked: int = 0, show_missing: int = 0, show_all: int = 0, sort_by: str = 'set', auth=Depends(require_auth)):
     with get_conn() as conn:
         order_ids = []
         batch = conn.execute('SELECT source_payload FROM batches WHERE id = ?', (batch_id,)).fetchone()
@@ -721,12 +726,13 @@ def batch_items(request: Request, batch_id: int, game: str = '', q: str = '', sh
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
         reservations = _reservation_map(conn, batch_id)
         set_names = _set_name_map(conn, [r['scryfall_id'] for r in rows if r.get('scryfall_id')])
-    rows = sort_items(rows)
+    sort_mode = 'value' if (sort_by or '').lower() == 'value' else 'set'
+    rows = sort_items(rows, sort_by=sort_mode)
     for r in rows:
         r['qty_remaining'] = remaining_qty(r)
         r['reserved_by'] = reservations.get(r['set_code'])
         r['set_name'] = set_names.get(r['set_code'])
-    return TEMPLATES.TemplateResponse('partials/items.html', {'request': request, 'items': rows, 'show_picked': bool(show_picked), 'show_missing': bool(show_missing)})
+    return TEMPLATES.TemplateResponse('partials/items.html', {'request': request, 'items': rows, 'show_picked': bool(show_picked), 'show_missing': bool(show_missing), 'sort_by': sort_mode})
 
 
 @app.get('/items/{item_id}/row', response_class=HTMLResponse)
@@ -915,8 +921,8 @@ def events_view(request: Request, batch_id: int, auth=Depends(require_auth)):
 def batch_summary(request: Request, batch_id: int, auth=Depends(require_auth)):
     with get_conn() as conn:
         batch = conn.execute('SELECT * FROM batches WHERE id = ?', (batch_id,)).fetchone()
-        total = conn.execute('SELECT COUNT(*) AS c FROM batch_items WHERE batch_id = ?', (batch_id,)).fetchone()['c']
-        picked = conn.execute('SELECT COUNT(*) AS c FROM batch_items WHERE batch_id = ? AND qty_picked >= qty_required', (batch_id,)).fetchone()['c']
+        total = conn.execute('SELECT COALESCE(SUM(qty_required), 0) AS c FROM batch_items WHERE batch_id = ?', (batch_id,)).fetchone()['c']
+        picked = conn.execute('SELECT COALESCE(SUM(qty_picked), 0) AS c FROM batch_items WHERE batch_id = ?', (batch_id,)).fetchone()['c']
         missing = conn.execute('SELECT COUNT(*) AS c FROM batch_items WHERE batch_id = ? AND is_missing = 1', (batch_id,)).fetchone()['c']
         rows = conn.execute('SELECT * FROM batch_items WHERE batch_id = ? AND is_missing = 1 ORDER BY game, set_code, card_name', (batch_id,)).fetchall()
     return TEMPLATES.TemplateResponse('batch_summary.html', {'request': request, 'batch': batch, 'total': total, 'picked': picked, 'missing': missing, 'items': rows})
