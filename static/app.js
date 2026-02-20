@@ -91,6 +91,7 @@ let lastCardItemId = null;
 let cardModalRetryInFlight = false;
 let assistedMode = null;
 let assistedCurrentItemId = null;
+let assistedSkippedItemIds = new Set();
 
 function openCard(itemId) {
   lastCardItemId = itemId;
@@ -314,6 +315,9 @@ function renderAssistedSnapshot(data) {
   const progress = document.getElementById('assisted-progress');
   const name = document.getElementById('assisted-card-name');
   const subtitle = document.getElementById('assisted-card-subtitle');
+  const number = document.getElementById('assisted-card-number');
+  const setCode = document.getElementById('assisted-set-code');
+  const finish = document.getElementById('assisted-finish');
   const qty = document.getElementById('assisted-qty');
   const image = document.getElementById('assisted-card-image');
   const noImage = document.getElementById('assisted-no-image');
@@ -324,12 +328,12 @@ function renderAssistedSnapshot(data) {
   name.textContent = data.item.card_name || '';
 
   const parts = [];
-  if (data.item.collector_number) parts.push(`#${data.item.collector_number}`);
-  if (data.item.set_code) parts.push(data.item.set_code);
   if (data.item.condition) parts.push(data.item.condition);
   if (data.item.language) parts.push(data.item.language);
-  if (data.item.printing) parts.push(data.item.printing);
   subtitle.textContent = parts.join(' | ');
+  number.textContent = data.item.collector_number || '-';
+  setCode.textContent = data.item.set_code || '-';
+  finish.textContent = data.item.printing || 'Normal';
 
   qty.textContent = `Remaining ${data.item.qty_remaining} of ${data.item.qty_required}`;
   pickAll.style.display = data.item.qty_remaining > 1 ? 'block' : 'none';
@@ -348,7 +352,8 @@ function renderAssistedSnapshot(data) {
 function loadAssistedNext() {
   const root = document.getElementById('assisted-pick-root');
   if (!root || !assistedMode) return;
-  const url = `${root.dataset.nextUrl}?mode=${encodeURIComponent(assistedMode)}`;
+  const excluded = Array.from(assistedSkippedItemIds).join(',');
+  const url = `${root.dataset.nextUrl}?mode=${encodeURIComponent(assistedMode)}&exclude_item_ids=${encodeURIComponent(excluded)}`;
   fetch(url)
     .then((resp) => resp.json())
     .then((data) => renderAssistedSnapshot(data));
@@ -356,13 +361,14 @@ function loadAssistedNext() {
 
 function selectAssistedMode(mode) {
   assistedMode = mode;
+  assistedSkippedItemIds = new Set();
   const chooser = document.getElementById('assisted-mode-chooser');
   if (chooser) chooser.style.display = 'none';
   loadAssistedNext();
 }
 
 function assistedSetButtonsDisabled(disabled) {
-  ['assisted-picked-btn', 'assisted-pick-all-btn', 'assisted-missing-btn'].forEach((id) => {
+  ['assisted-picked-btn', 'assisted-pick-all-btn', 'assisted-skip-btn', 'assisted-missing-btn'].forEach((id) => {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = disabled;
   });
@@ -375,6 +381,8 @@ function assistedPerformAction(action) {
   body.set('item_id', String(assistedCurrentItemId));
   body.set('action', action);
   body.set('mode', assistedMode);
+  body.set('exclude_item_ids', Array.from(assistedSkippedItemIds).join(','));
+  assistedSkippedItemIds.delete(assistedCurrentItemId);
   assistedSetButtonsDisabled(true);
   fetch(root.dataset.actionUrl, {
     method: 'POST',
@@ -384,6 +392,12 @@ function assistedPerformAction(action) {
     .then((resp) => resp.json())
     .then((data) => renderAssistedSnapshot(data))
     .finally(() => assistedSetButtonsDisabled(false));
+}
+
+function assistedSkip() {
+  if (!assistedCurrentItemId) return;
+  assistedSkippedItemIds.add(assistedCurrentItemId);
+  loadAssistedNext();
 }
 
 function initAssistedPick() {

@@ -482,12 +482,13 @@ def _middle_out_set_order(set_codes):
     return order
 
 
-def _assisted_pending_items(conn, batch_id):
+def _assisted_pending_items(conn, batch_id, excluded_ids=None):
+    excluded_ids = {int(v) for v in (excluded_ids or []) if str(v).isdigit()}
     rows = conn.execute(
         'SELECT * FROM batch_items WHERE batch_id = ? AND is_missing = 0 AND qty_picked < qty_required',
         (batch_id,),
     ).fetchall()
-    items = sort_items([dict(r) for r in rows])
+    items = sort_items([dict(r) for r in rows if int(r['id']) not in excluded_ids])
     for item in items:
         item['qty_remaining'] = remaining_qty(item)
     return items
@@ -509,11 +510,14 @@ def _assisted_select_item(items, mode):
     return items[0]
 
 
-def _assisted_snapshot(conn, batch_id, mode):
-    items = _assisted_pending_items(conn, batch_id)
-    remaining_cards = len(items)
-    remaining_copies = sum(i.get('qty_remaining', 0) for i in items)
-    if not items:
+def _assisted_snapshot(conn, batch_id, mode, excluded_ids=None):
+    all_items = _assisted_pending_items(conn, batch_id)
+    items = _assisted_pending_items(conn, batch_id, excluded_ids=excluded_ids)
+    if not items and all_items:
+        items = all_items
+    remaining_cards = len(all_items)
+    remaining_copies = sum(i.get('qty_remaining', 0) for i in all_items)
+    if not all_items:
         return {
             'done': True,
             'mode': mode,
@@ -538,13 +542,13 @@ def _assisted_snapshot(conn, batch_id, mode):
             'qty_picked': current.get('qty_picked', 0),
             'qty_remaining': current.get('qty_remaining', 0),
             'scryfall_id': current.get('scryfall_id'),
-            'image_url': f"/card/image/{current['scryfall_id']}?size=large" if current.get('scryfall_id') else None,
+            'image_url': f"/api/items/{current['id']}/image?size=large",
         },
     }
 
 
 @app.get('/api/batch/{batch_id}/assisted-next')
-def assisted_next(batch_id: int, mode: str = 'top_down', auth=Depends(require_auth)):
+def assisted_next(batch_id: int, mode: str = 'top_down', exclude_item_ids: str = '', auth=Depends(require_auth)):
     mode = (mode or 'top_down').strip().lower()
     if mode not in ('top_down', 'bottom_up', 'middle_out'):
         mode = 'top_down'
@@ -552,7 +556,8 @@ def assisted_next(batch_id: int, mode: str = 'top_down', auth=Depends(require_au
         batch = conn.execute('SELECT id FROM batches WHERE id = ?', (batch_id,)).fetchone()
         if not batch:
             raise HTTPException(status_code=404)
-        return JSONResponse(_assisted_snapshot(conn, batch_id, mode))
+        excluded_ids = [p for p in (exclude_item_ids or '').split(',') if p]
+        return JSONResponse(_assisted_snapshot(conn, batch_id, mode, excluded_ids=excluded_ids))
 
 
 @app.post('/api/batch/{batch_id}/assisted-action')
@@ -562,6 +567,7 @@ async def assisted_action(
     item_id: int = Form(...),
     action: str = Form(...),
     mode: str = Form('top_down'),
+    exclude_item_ids: str = Form(''),
     note: str = Form(''),
     auth=Depends(require_auth),
 ):
@@ -603,7 +609,8 @@ async def assisted_action(
         else:
             raise HTTPException(status_code=400, detail='Invalid action')
         updated = conn.execute('SELECT batch_id FROM batch_items WHERE id = ?', (item_id,)).fetchone()
-        snapshot = _assisted_snapshot(conn, batch_id, mode)
+        excluded_ids = [p for p in (exclude_item_ids or '').split(',') if p and p != str(item_id)]
+        snapshot = _assisted_snapshot(conn, batch_id, mode, excluded_ids=excluded_ids)
 
     await manager.broadcast(updated['batch_id'], {'type': 'item_update', 'item_id': item_id})
     return JSONResponse(snapshot)
@@ -883,6 +890,21 @@ def card_image(card_id: str, size: str = 'normal', auth=Depends(require_auth)):
             scryfall.ensure_image_cached(card, size=size)
     if path.exists():
         return FileResponse(str(path))
+    raise HTTPException(status_code=404)
+
+
+@app.get('/api/items/{item_id}/image')
+def item_image(item_id: int, size: str = 'large', auth=Depends(require_auth)):
+    with get_conn() as conn:
+        item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
+        if not item:
+            raise HTTPException(status_code=404)
+        item = dict(item)
+        card, _ = scryfall.resolve_card(conn, item)
+        if card:
+            path = scryfall.ensure_image_cached(card, size=size)
+            if path and path.exists():
+                return FileResponse(str(path))
     raise HTTPException(status_code=404)
 
 

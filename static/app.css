@@ -492,6 +492,28 @@ body {
   color: #234f95;
 }
 
+.assisted-prominent {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.assisted-prominent-label {
+  font-size: 16px;
+  color: #3d5f98;
+  font-weight: 700;
+}
+
+.assisted-prominent-value {
+  font-size: 30px;
+  font-weight: 800;
+  color: #0f2e5f;
+  background: #e3eeff;
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-top: 4px;
+}
+
 .assisted-qty {
   font-size: 34px;
   font-weight: 700;
@@ -527,6 +549,10 @@ body {
   background: #0ea5e9;
 }
 
+.assisted-skip-btn {
+  background: #475569;
+}
+
 .assisted-missing-btn {
   background: #b91c1c;
 }
@@ -550,6 +576,8 @@ body {
   .assisted-image-pane { min-height: 45vh; }
   .assisted-card-name { font-size: 30px; }
   .assisted-card-subtitle { font-size: 18px; }
+  .assisted-prominent { grid-template-columns: 1fr; }
+  .assisted-prominent-value { font-size: 26px; }
   .assisted-qty { font-size: 28px; }
   .assisted-action-btn { font-size: 30px; }
   .assisted-mode-buttons { grid-template-columns: 1fr; }
