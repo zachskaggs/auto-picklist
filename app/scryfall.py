@@ -6,13 +6,27 @@ load_optional_dotenv()
 import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 import requests
+from requests.adapters import HTTPAdapter
 from datetime import datetime
 
 BASE_URL = os.getenv('SCRYFALL_BASE_URL', 'https://api.scryfall.com')
 IMAGE_SIZE = os.getenv('SCRYFALL_IMAGE_SIZE', 'normal')
 MAX_WORKERS = int(os.getenv('SCRYFALL_MAX_WORKERS', '8'))
 CACHE_DIR = Path('data/cache/images')
+_THREAD_LOCAL = threading.local()
+
+
+def _http():
+    session = getattr(_THREAD_LOCAL, 'session', None)
+    if session is None:
+        session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
+        session.mount('https://', adapter)
+        session.mount('http://', adapter)
+        _THREAD_LOCAL.session = session
+    return session
 
 
 def _utc_now():
@@ -101,7 +115,7 @@ def fetch_cards_by_ids(conn, scryfall_ids):
 
     def _fetch_one(scryfall_id):
         try:
-            resp = requests.get(f"{BASE_URL}/cards/{scryfall_id}", timeout=15)
+            resp = _http().get(f"{BASE_URL}/cards/{scryfall_id}", timeout=15)
             if resp.status_code == 200:
                 return scryfall_id, resp.json()
         except requests.RequestException:
@@ -127,7 +141,7 @@ def fetch_card_by_id(conn, scryfall_id):
     if cached:
         return cached
     try:
-        resp = requests.get(f"{BASE_URL}/cards/{scryfall_id}", timeout=15)
+        resp = _http().get(f"{BASE_URL}/cards/{scryfall_id}", timeout=15)
         if resp.status_code == 200:
             card = resp.json()
             _save_card_cache(conn, card)
@@ -139,7 +153,7 @@ def fetch_card_by_id(conn, scryfall_id):
 
 def fetch_card_by_set(conn, set_code, collector_number):
     try:
-        resp = requests.get(f"{BASE_URL}/cards/{set_code}/{collector_number}", timeout=15)
+        resp = _http().get(f"{BASE_URL}/cards/{set_code}/{collector_number}", timeout=15)
         if resp.status_code == 200:
             card = resp.json()
             _save_card_cache(conn, card)
@@ -151,7 +165,7 @@ def fetch_card_by_set(conn, set_code, collector_number):
 
 def fetch_card_fuzzy(conn, name):
     try:
-        resp = requests.get(f"{BASE_URL}/cards/named", params={'fuzzy': name}, timeout=15)
+        resp = _http().get(f"{BASE_URL}/cards/named", params={'fuzzy': name}, timeout=15)
         if resp.status_code == 200:
             card = resp.json()
             _save_card_cache(conn, card)
@@ -163,7 +177,7 @@ def fetch_card_fuzzy(conn, name):
 
 def search_cards(name, limit=10):
     try:
-        resp = requests.get(f"{BASE_URL}/cards/search", params={'q': name, 'order': 'released'}, timeout=15)
+        resp = _http().get(f"{BASE_URL}/cards/search", params={'q': name, 'order': 'released'}, timeout=15)
         if resp.status_code == 200:
             data = resp.json()
             return data.get('data', [])[:limit]
@@ -206,7 +220,7 @@ def ensure_image_cached(card, size=IMAGE_SIZE):
     if path.exists():
         return path
     try:
-        resp = requests.get(url, timeout=20)
+        resp = _http().get(url, timeout=20)
         if resp.status_code == 200:
             path.write_bytes(resp.content)
             return path
