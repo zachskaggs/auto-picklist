@@ -606,10 +606,17 @@ async def assisted_action(
                 'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)',
                 ('missing', item_id, 0, _utc_now(), session_id),
             )
+        elif action == 'skip':
+            pass
         else:
             raise HTTPException(status_code=400, detail='Invalid action')
         updated = conn.execute('SELECT batch_id FROM batch_items WHERE id = ?', (item_id,)).fetchone()
-        excluded_ids = [p for p in (exclude_item_ids or '').split(',') if p and p != str(item_id)]
+        excluded_ids = [p.strip() for p in (exclude_item_ids or '').split(',') if p.strip()]
+        if action == 'skip':
+            if str(item_id) not in excluded_ids:
+                excluded_ids.append(str(item_id))
+        else:
+            excluded_ids = [p for p in excluded_ids if p != str(item_id)]
         snapshot = _assisted_snapshot(conn, batch_id, mode, excluded_ids=excluded_ids)
 
     await manager.broadcast(updated['batch_id'], {'type': 'item_update', 'item_id': item_id})

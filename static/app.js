@@ -339,6 +339,10 @@ function renderAssistedSnapshot(data) {
   pickAll.style.display = data.item.qty_remaining > 1 ? 'block' : 'none';
 
   if (data.item.image_url) {
+    image.onerror = () => {
+      image.style.display = 'none';
+      noImage.style.display = 'block';
+    };
     image.src = data.item.image_url;
     image.style.display = 'block';
     noImage.style.display = 'none';
@@ -381,23 +385,27 @@ function assistedPerformAction(action) {
   body.set('item_id', String(assistedCurrentItemId));
   body.set('action', action);
   body.set('mode', assistedMode);
+  if (action === 'skip') {
+    assistedSkippedItemIds.add(assistedCurrentItemId);
+  } else {
+    assistedSkippedItemIds.delete(assistedCurrentItemId);
+  }
   body.set('exclude_item_ids', Array.from(assistedSkippedItemIds).join(','));
-  assistedSkippedItemIds.delete(assistedCurrentItemId);
   assistedSetButtonsDisabled(true);
   fetch(root.dataset.actionUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
   })
-    .then((resp) => resp.json())
+    .then((resp) => {
+      if (!resp.ok) {
+        throw new Error(`Assisted action failed (${resp.status})`);
+      }
+      return resp.json();
+    })
     .then((data) => renderAssistedSnapshot(data))
+    .catch(() => loadAssistedNext())
     .finally(() => assistedSetButtonsDisabled(false));
-}
-
-function assistedSkip() {
-  if (!assistedCurrentItemId) return;
-  assistedSkippedItemIds.add(assistedCurrentItemId);
-  loadAssistedNext();
 }
 
 function initAssistedPick() {
