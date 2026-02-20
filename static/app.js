@@ -89,6 +89,8 @@ document.addEventListener('keydown', (evt) => {
 
 let lastCardItemId = null;
 let cardModalRetryInFlight = false;
+let assistedMode = null;
+let assistedCurrentItemId = null;
 
 function openCard(itemId) {
   lastCardItemId = itemId;
@@ -286,6 +288,111 @@ function generateManaPoolPicklist() {
     });
 }
 
+function assistedModeLabel(mode) {
+  if (mode === 'bottom_up') return 'Bottom up';
+  if (mode === 'middle_out') return 'Middle out';
+  return 'Top down';
+}
+
+function renderAssistedSnapshot(data) {
+  const layout = document.getElementById('assisted-layout');
+  const done = document.getElementById('assisted-done');
+  if (!layout || !done) return;
+
+  if (data.done) {
+    assistedCurrentItemId = null;
+    layout.style.display = 'none';
+    done.style.display = 'block';
+    return;
+  }
+
+  done.style.display = 'none';
+  layout.style.display = 'grid';
+  assistedCurrentItemId = data.item.id;
+
+  const modeLabel = document.getElementById('assisted-mode-label');
+  const progress = document.getElementById('assisted-progress');
+  const name = document.getElementById('assisted-card-name');
+  const subtitle = document.getElementById('assisted-card-subtitle');
+  const qty = document.getElementById('assisted-qty');
+  const image = document.getElementById('assisted-card-image');
+  const noImage = document.getElementById('assisted-no-image');
+  const pickAll = document.getElementById('assisted-pick-all-btn');
+
+  modeLabel.textContent = `Mode: ${assistedModeLabel(data.mode)}`;
+  progress.textContent = `Cards left: ${data.remaining_cards} | Copies left: ${data.remaining_copies}`;
+  name.textContent = data.item.card_name || '';
+
+  const parts = [];
+  if (data.item.collector_number) parts.push(`#${data.item.collector_number}`);
+  if (data.item.set_code) parts.push(data.item.set_code);
+  if (data.item.condition) parts.push(data.item.condition);
+  if (data.item.language) parts.push(data.item.language);
+  if (data.item.printing) parts.push(data.item.printing);
+  subtitle.textContent = parts.join(' | ');
+
+  qty.textContent = `Remaining ${data.item.qty_remaining} of ${data.item.qty_required}`;
+  pickAll.style.display = data.item.qty_remaining > 1 ? 'block' : 'none';
+
+  if (data.item.image_url) {
+    image.src = data.item.image_url;
+    image.style.display = 'block';
+    noImage.style.display = 'none';
+  } else {
+    image.removeAttribute('src');
+    image.style.display = 'none';
+    noImage.style.display = 'block';
+  }
+}
+
+function loadAssistedNext() {
+  const root = document.getElementById('assisted-pick-root');
+  if (!root || !assistedMode) return;
+  const url = `${root.dataset.nextUrl}?mode=${encodeURIComponent(assistedMode)}`;
+  fetch(url)
+    .then((resp) => resp.json())
+    .then((data) => renderAssistedSnapshot(data));
+}
+
+function selectAssistedMode(mode) {
+  assistedMode = mode;
+  const chooser = document.getElementById('assisted-mode-chooser');
+  if (chooser) chooser.style.display = 'none';
+  loadAssistedNext();
+}
+
+function assistedSetButtonsDisabled(disabled) {
+  ['assisted-picked-btn', 'assisted-pick-all-btn', 'assisted-missing-btn'].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = disabled;
+  });
+}
+
+function assistedPerformAction(action) {
+  const root = document.getElementById('assisted-pick-root');
+  if (!root || !assistedCurrentItemId || !assistedMode) return;
+  const body = new URLSearchParams();
+  body.set('item_id', String(assistedCurrentItemId));
+  body.set('action', action);
+  body.set('mode', assistedMode);
+  assistedSetButtonsDisabled(true);
+  fetch(root.dataset.actionUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  })
+    .then((resp) => resp.json())
+    .then((data) => renderAssistedSnapshot(data))
+    .finally(() => assistedSetButtonsDisabled(false));
+}
+
+function initAssistedPick() {
+  const root = document.getElementById('assisted-pick-root');
+  if (!root) return;
+  const chooser = document.getElementById('assisted-mode-chooser');
+  if (chooser) chooser.style.display = 'block';
+}
+
 let scrollTicking = false;
 window.addEventListener('scroll', () => {
   if (scrollTicking) return;
@@ -367,6 +474,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initUserName();
   initRealtime();
   applySetCollapseState();
+  initAssistedPick();
 });
 
 

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">Assisted Pick: {{ batch.name }}</div>
+  <div class="header-actions">
+    <a class="btn secondary" href="/batch/{{ batch.id }}">Back to batch</a>
+    <a class="btn secondary" href="/">Batches</a>
+  </div>
+</div>
+
+<div
+  id="assisted-pick-root"
+  class="assisted-root"
+  data-batch-id="{{ batch.id }}"
+  data-next-url="/api/batch/{{ batch.id }}/assisted-next"
+  data-action-url="/api/batch/{{ batch.id }}/assisted-action"
+>
+  <div id="assisted-mode-chooser" class="assisted-chooser panel">
+    <div class="assisted-chooser-title">Pick from</div>
+    <div class="assisted-mode-buttons">
+      <button class="assisted-mode-btn" type="button" onclick="selectAssistedMode('top_down')">Top down</button>
+      <button class="assisted-mode-btn" type="button" onclick="selectAssistedMode('bottom_up')">Bottom up</button>
+      <button class="assisted-mode-btn" type="button" onclick="selectAssistedMode('middle_out')">Middle out</button>
+    </div>
+  </div>
+
+  <div id="assisted-layout" class="assisted-layout panel" style="display:none;">
+    <div class="assisted-image-pane">
+      <img id="assisted-card-image" class="assisted-card-image" alt="Card image" />
+      <div id="assisted-no-image" class="assisted-no-image" style="display:none;">No image available</div>
+    </div>
+    <div class="assisted-detail-pane">
+      <div class="assisted-meta">
+        <div id="assisted-mode-label" class="badge"></div>
+        <div id="assisted-progress" class="badge"></div>
+      </div>
+      <div id="assisted-card-name" class="assisted-card-name"></div>
+      <div id="assisted-card-subtitle" class="assisted-card-subtitle"></div>
+      <div id="assisted-qty" class="assisted-qty"></div>
+      <div class="assisted-actions">
+        <button id="assisted-picked-btn" class="assisted-action-btn assisted-picked-btn" type="button" onclick="assistedPerformAction('pick')">Picked</button>
+        <button id="assisted-pick-all-btn" class="assisted-action-btn assisted-pick-all-btn" type="button" onclick="assistedPerformAction('pick_all')">Pick All</button>
+        <button id="assisted-missing-btn" class="assisted-action-btn assisted-missing-btn" type="button" onclick="assistedPerformAction('missing')">Missing</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="assisted-done" class="assisted-done panel" style="display:none;">
+    <div class="title">Batch complete</div>
+    <div>All non-missing cards are fully picked.</div>
+    <div class="header-actions" style="margin-top: 14px;">
+      <a class="btn secondary" href="/batch/{{ batch.id }}">Back to batch</a>
+      <a class="btn secondary" href="/batch/{{ batch.id }}/summary">Batch summary</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

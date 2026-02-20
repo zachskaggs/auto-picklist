@@ -383,6 +383,15 @@ def picklist(request: Request, batch_id: int, auth=Depends(require_auth)):
     return TEMPLATES.TemplateResponse('picklist.html', {'request': request, 'batch': batch, 'source_orders': source_orders})
 
 
+@app.get('/batch/{batch_id}/assisted-pick', response_class=HTMLResponse)
+def assisted_pick_view(request: Request, batch_id: int, auth=Depends(require_auth)):
+    with get_conn() as conn:
+        batch = conn.execute('SELECT * FROM batches WHERE id = ?', (batch_id,)).fetchone()
+        if not batch:
+            raise HTTPException(status_code=404)
+    return TEMPLATES.TemplateResponse('assisted_pick.html', {'request': request, 'batch': batch})
+
+
 def _reservation_map(conn, batch_id):
     rows = conn.execute('SELECT set_code, reserved_by FROM set_reservations WHERE batch_id = ?', (batch_id,)).fetchall()
     return {r['set_code']: r['reserved_by'] for r in rows}
@@ -453,6 +462,151 @@ def _set_name_map(conn, scryfall_ids):
         if code and name and code not in set_names:
             set_names[code] = name
     return set_names
+
+
+def _middle_out_set_order(set_codes):
+    codes = sorted([c for c in set_codes if c is not None])
+    if not codes:
+        return []
+    left = (len(codes) - 1) // 2
+    right = left + 1
+    order = [codes[left]]
+    step = 1
+    while left - step >= 0 or right <= len(codes) - 1:
+        if left - step >= 0:
+            order.append(codes[left - step])
+        if right <= len(codes) - 1:
+            order.append(codes[right])
+            right += 1
+        step += 1
+    return order
+
+
+def _assisted_pending_items(conn, batch_id):
+    rows = conn.execute(
+        'SELECT * FROM batch_items WHERE batch_id = ? AND is_missing = 0 AND qty_picked < qty_required',
+        (batch_id,),
+    ).fetchall()
+    items = sort_items([dict(r) for r in rows])
+    for item in items:
+        item['qty_remaining'] = remaining_qty(item)
+    return items
+
+
+def _assisted_select_item(items, mode):
+    if not items:
+        return None
+    if mode == 'bottom_up':
+        return items[-1]
+    if mode == 'middle_out':
+        by_set = {}
+        for item in items:
+            by_set.setdefault(item.get('set_code') or '', []).append(item)
+        for set_code in _middle_out_set_order(by_set.keys()):
+            set_items = by_set.get(set_code) or []
+            if set_items:
+                return set_items[0]
+    return items[0]
+
+
+def _assisted_snapshot(conn, batch_id, mode):
+    items = _assisted_pending_items(conn, batch_id)
+    remaining_cards = len(items)
+    remaining_copies = sum(i.get('qty_remaining', 0) for i in items)
+    if not items:
+        return {
+            'done': True,
+            'mode': mode,
+            'remaining_cards': remaining_cards,
+            'remaining_copies': remaining_copies,
+        }
+    current = _assisted_select_item(items, mode)
+    return {
+        'done': False,
+        'mode': mode,
+        'remaining_cards': remaining_cards,
+        'remaining_copies': remaining_copies,
+        'item': {
+            'id': current['id'],
+            'card_name': current.get('card_name') or '',
+            'collector_number': current.get('collector_number'),
+            'set_code': (current.get('set_code') or '').upper(),
+            'condition': current.get('condition'),
+            'language': current.get('language'),
+            'printing': current.get('printing'),
+            'qty_required': current.get('qty_required', 0),
+            'qty_picked': current.get('qty_picked', 0),
+            'qty_remaining': current.get('qty_remaining', 0),
+            'scryfall_id': current.get('scryfall_id'),
+            'image_url': f"/card/image/{current['scryfall_id']}?size=large" if current.get('scryfall_id') else None,
+        },
+    }
+
+
+@app.get('/api/batch/{batch_id}/assisted-next')
+def assisted_next(batch_id: int, mode: str = 'top_down', auth=Depends(require_auth)):
+    mode = (mode or 'top_down').strip().lower()
+    if mode not in ('top_down', 'bottom_up', 'middle_out'):
+        mode = 'top_down'
+    with get_conn() as conn:
+        batch = conn.execute('SELECT id FROM batches WHERE id = ?', (batch_id,)).fetchone()
+        if not batch:
+            raise HTTPException(status_code=404)
+        return JSONResponse(_assisted_snapshot(conn, batch_id, mode))
+
+
+@app.post('/api/batch/{batch_id}/assisted-action')
+async def assisted_action(
+    request: Request,
+    batch_id: int,
+    item_id: int = Form(...),
+    action: str = Form(...),
+    mode: str = Form('top_down'),
+    note: str = Form(''),
+    auth=Depends(require_auth),
+):
+    mode = (mode or 'top_down').strip().lower()
+    if mode not in ('top_down', 'bottom_up', 'middle_out'):
+        mode = 'top_down'
+    session_id = request.session.get('sid') or str(uuid.uuid4())
+    request.session['sid'] = session_id
+
+    with get_conn() as conn:
+        item = conn.execute('SELECT * FROM batch_items WHERE id = ? AND batch_id = ?', (item_id, batch_id)).fetchone()
+        if not item:
+            raise HTTPException(status_code=404)
+        qty_remaining = item['qty_required'] - item['qty_picked']
+        action = (action or '').strip().lower()
+        if action == 'pick':
+            if qty_remaining > 0:
+                conn.execute('UPDATE batch_items SET qty_picked = qty_picked + 1, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
+                conn.execute(
+                    'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)',
+                    ('pick', item_id, 1, _utc_now(), session_id),
+                )
+        elif action == 'pick_all':
+            if qty_remaining > 0:
+                conn.execute('UPDATE batch_items SET qty_picked = qty_required, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
+                conn.execute(
+                    'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)',
+                    ('pick', item_id, qty_remaining, _utc_now(), session_id),
+                )
+        elif action == 'missing':
+            conn.execute(
+                'UPDATE batch_items SET is_missing = 1, missing_note = COALESCE(NULLIF(?, \'\'), missing_note), updated_at = ? WHERE id = ?',
+                (note, _utc_now(), item_id),
+            )
+            conn.execute(
+                'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)',
+                ('missing', item_id, 0, _utc_now(), session_id),
+            )
+        else:
+            raise HTTPException(status_code=400, detail='Invalid action')
+        updated = conn.execute('SELECT batch_id FROM batch_items WHERE id = ?', (item_id,)).fetchone()
+        snapshot = _assisted_snapshot(conn, batch_id, mode)
+
+    await manager.broadcast(updated['batch_id'], {'type': 'item_update', 'item_id': item_id})
+    return JSONResponse(snapshot)
 
 
 @app.get('/batch/{batch_id}/counts', response_class=HTMLResponse)

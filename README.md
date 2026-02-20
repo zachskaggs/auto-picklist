@@ -112,7 +112,10 @@ Primary:
 - `GET /` open batches
 - `POST /api/batches/generate-from-manapool` generate a batch
 - `GET /batch/{id}` picklist
+- `GET /batch/{id}/assisted-pick` assisted pick workflow
 - `GET /batch/{id}/items` list items with filters
+- `GET /api/batch/{id}/assisted-next` assisted next item
+- `POST /api/batch/{id}/assisted-action` assisted pick action
 - `POST /items/{id}/pick` pick
 - `POST /items/{id}/undo` undo pick
 - `POST /items/{id}/missing` mark missing
