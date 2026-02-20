@@ -324,15 +324,16 @@ function renderAssistedSnapshot(data) {
   const pickAll = document.getElementById('assisted-pick-all-btn');
 
   modeLabel.textContent = `Mode: ${assistedModeLabel(data.mode)}`;
-  progress.textContent = `Cards left: ${data.remaining_cards} | Copies left: ${data.remaining_copies}`;
+  progress.textContent = `${data.remaining_cards} cards left | ${data.remaining_copies} copies left`;
   name.textContent = data.item.card_name || '';
 
   const parts = [];
   if (data.item.condition) parts.push(data.item.condition);
   if (data.item.language) parts.push(data.item.language);
   subtitle.textContent = parts.join(' | ');
-  number.textContent = data.item.collector_number || '-';
-  setCode.textContent = data.item.set_code || '-';
+  subtitle.style.display = subtitle.textContent ? 'block' : 'none';
+  number.textContent = data.item.collector_number || 'Unknown';
+  setCode.textContent = data.item.set_code || 'Unknown';
   finish.textContent = data.item.printing || 'Normal';
 
   qty.textContent = `Remaining ${data.item.qty_remaining} of ${data.item.qty_required}`;
