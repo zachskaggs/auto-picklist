@@ -359,6 +359,7 @@ function renderAssistedSnapshot(data) {
   }
 
   qty.textContent = `Remaining ${data.item.qty_remaining} of ${data.item.qty_required}`;
+  qty.classList.toggle('assisted-qty-multi', data.item.qty_required > 1);
   pickAll.style.display = data.item.qty_remaining > 1 ? 'block' : 'none';
   layout.classList.toggle('assisted-high-value', typeof data.item.purchase_price === 'number' && data.item.purchase_price > 5);
 
@@ -497,6 +498,7 @@ function initAssistedPick() {
 }
 
 let scrollTicking = false;
+let lastScrollY = 0;
 window.addEventListener('scroll', () => {
   if (scrollTicking) return;
   scrollTicking = true;
@@ -507,11 +509,12 @@ window.addEventListener('scroll', () => {
       return;
     }
     const current = window.scrollY;
-    if (current > 80) {
-      header.classList.add('header-compact');
+    if (current > 60 && current > lastScrollY) {
+      header.classList.add('header-hidden');
     } else {
-      header.classList.remove('header-compact');
+      header.classList.remove('header-hidden');
     }
+    lastScrollY = current;
     scrollTicking = false;
   });
 });

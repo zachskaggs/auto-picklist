@@ -787,6 +787,8 @@ def batch_items(request: Request, batch_id: int, game: str = '', q: str = '', sh
                 where.append('qty_picked < qty_required')
             if show_missing:
                 where.append('is_missing = 1')
+            else:
+                where.append('is_missing = 0')
         sql = f"SELECT * FROM batch_items WHERE {' AND '.join(where)}"
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
         reservations = _reservation_map(conn, batch_id)
@@ -808,6 +810,8 @@ def item_row(request: Request, item_id: int, show_picked: int = 0, show_missing:
             return HTMLResponse('', status_code=HTTP_204_NO_CONTENT)
         item = dict(item)
         if not show_all:
+            if not show_missing and item['is_missing']:
+                return HTMLResponse('', status_code=HTTP_204_NO_CONTENT)
             if not show_picked and item['qty_picked'] >= item['qty_required']:
                 return HTMLResponse('', status_code=HTTP_204_NO_CONTENT)
             if show_missing and not item['is_missing']:
@@ -908,6 +912,11 @@ async def mark_missing(request: Request, item_id: int, note: str = Form(''), sho
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
     qty_rem = remaining_qty(item)
     if not show_all:
+        # Hide missing items in default view (not show_missing mode)
+        if not show_missing and item['is_missing']:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
         if not show_picked and qty_rem == 0:
             resp = HTMLResponse('')
             resp.headers['HX-Trigger'] = 'batch-counts-changed'

@@ -1,4 +1,4 @@
-<div id="item-{{ item.id }}" class="item-row picklist-row {% if qty_remaining == 0 %}picked{% endif %} {% if item.purchase_price is not none and item.purchase_price > 5 %}high-value-card{% endif %}" data-item-id="{{ item.id }}" data-set-code="{{ item.set_code }}">
+<div id="item-{{ item.id }}" class="item-row picklist-row {% if qty_remaining == 0 %}picked{% endif %} {% if item.purchase_price is not none and item.purchase_price > 5 %}high-value-card{% endif %} {% if item.qty_required > 1 %}multi-qty{% endif %}" data-item-id="{{ item.id }}" data-set-code="{{ item.set_code }}">
   <div class="item-main" onclick="openCard({{ item.id }})">
     <div class="item-title">
       <span class="item-name {% if item.printing and item.printing|lower == 'foil' %}foil-name{% endif %}">{{ item.card_name }}{% if item.collector_number %} ({{ item.collector_number }}){% endif %}</span>

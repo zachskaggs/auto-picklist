@@ -22,23 +22,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: 8px 16px;
   background: var(--panel);
   box-shadow: 0 2px 8px var(--shadow);
   position: sticky;
   top: 0;
   z-index: 10;
-  transition: transform 0.2s ease;
-  gap: 12px;
+  transition: transform 0.25s ease;
+  gap: 8px;
 }
 
-.header-compact {
-  padding: 8px 16px;
+.header-hidden {
+  transform: translateY(-100%);
 }
 
 .header-right {
   display: flex;
-  gap: 10px;
+  gap: 6px;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -56,30 +56,31 @@ body {
 }
 
 .name-input {
-  width: 140px;
-  font-size: 15px;
-  padding: 8px 10px;
+  width: 120px;
+  font-size: 14px;
+  padding: 6px 8px;
 }
 
-.header-compact .header-hideable {
+.header-hidden .header-hideable {
   display: none;
 }
 
 .title {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
  .btn {
-  font-size: 16px;
-  padding: 10px 14px;
-  border-radius: 12px;
+  font-size: 14px;
+  padding: 7px 12px;
+  border-radius: 10px;
   border: none;
   cursor: pointer;
   background: var(--accent);
   color: white;
-  box-shadow: 0 4px 10px var(--shadow);
+  box-shadow: 0 2px 6px var(--shadow);
 }
 
 .btn.secondary { background: #3b5ea8; }
@@ -122,15 +123,15 @@ body {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .header-counts {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--muted);
-  padding: 6px 10px;
-  border-radius: 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
   background: #f1f5ff;
   border: 1px solid #dbe6ff;
   white-space: nowrap;
@@ -161,6 +162,16 @@ body {
 }
 
 .item-row.picked { opacity: 0.5; }
+
+.item-row.multi-qty {
+  border-left: 4px solid #2563eb;
+  background: #f0f5ff;
+}
+
+.item-row.multi-qty .qty-col {
+  font-size: 19px;
+  color: #1d4ed8;
+}
 
 .picklist-row {
   grid-template-columns: 3fr 1.1fr 1fr 1fr;
@@ -543,6 +554,14 @@ body {
   color: #0f2e5f;
 }
 
+.assisted-qty-multi {
+  color: #1d4ed8;
+  background: #eff4ff;
+  border: 3px solid #2563eb;
+  border-radius: 12px;
+  padding: 8px 14px;
+}
+
 .assisted-actions {
   margin-top: auto;
   display: grid;
@@ -705,9 +724,6 @@ body {
   .assisted-next-preview { margin: 0 12px 12px; }
   .assisted-next-thumb { width: 50px; height: 70px; }
   .assisted-next-name { font-size: 18px; }
-  .header { padding: 10px 14px; gap: 10px; }
-  .name-input { width: 120px; }
-  .header-filters label { font-size: 13px; }
 }
 
 @media (max-width: 900px) {
