@@ -21,7 +21,9 @@
     const form = document.getElementById('filters');
     const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
     const url = params ? `${undoUrl}?${params}` : undoUrl;
-    fetch(url, { method: 'POST' }).then(() => {
+    const undoBody = new URLSearchParams();
+    undoBody.set('picker_name', getUserName());
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: undoBody.toString() }).then(() => {
       toast.classList.remove('show');
       htmx.trigger(document.body, 'batch-counts-changed');
       if (itemId) { refreshItem(itemId); }
@@ -42,6 +44,7 @@ function markMissing(itemId) {
   }
   const body = new URLSearchParams();
   body.set('note', note);
+  body.set('picker_name', getUserName());
   const form = document.getElementById('filters');
   const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
   const url = params ? `/items/${itemId}/missing?${params}` : `/items/${itemId}/missing`;
@@ -115,7 +118,15 @@ function initUserName() {
   input.addEventListener('input', () => {
     const val = input.value.trim() || 'anonymous';
     localStorage.setItem('picker_name', val);
+    syncPickerNameHidden();
   });
+}
+
+function syncPickerNameHidden() {
+  const hidden = document.getElementById('picker-name-hidden');
+  if (hidden) {
+    hidden.value = getUserName();
+  }
 }
 
 function reserveSet(setCode) {
@@ -305,6 +316,8 @@ function renderAssistedSnapshot(data) {
     layout.classList.remove('assisted-high-value');
     layout.style.display = 'none';
     done.style.display = 'block';
+    const nextSection = document.getElementById('assisted-next-preview');
+    if (nextSection) nextSection.style.display = 'none';
     return;
   }
 
@@ -362,6 +375,37 @@ function renderAssistedSnapshot(data) {
     image.style.display = 'none';
     noImage.style.display = 'block';
   }
+
+  // Coming Next preview
+  const nextSection = document.getElementById('assisted-next-preview');
+  if (nextSection) {
+    if (data.next_item) {
+      const nextName = document.getElementById('assisted-next-name');
+      const nextSet = document.getElementById('assisted-next-set');
+      const nextImg = document.getElementById('assisted-next-image');
+      const nextNoImg = document.getElementById('assisted-next-no-image');
+      nextName.textContent = data.next_item.card_name || '';
+      nextSet.textContent = [data.next_item.set_code, data.next_item.collector_number].filter(Boolean).join(' #');
+      if (data.next_item.image_url) {
+        nextImg.onerror = () => { nextImg.style.display = 'none'; nextNoImg.style.display = 'block'; };
+        nextImg.src = data.next_item.image_url;
+        nextImg.style.display = 'block';
+        nextNoImg.style.display = 'none';
+      } else {
+        nextImg.removeAttribute('src');
+        nextImg.style.display = 'none';
+        nextNoImg.style.display = 'block';
+      }
+      nextSection.style.display = 'flex';
+      // Preload next image for faster display
+      if (data.next_item.image_url) {
+        const preload = new Image();
+        preload.src = data.next_item.image_url;
+      }
+    } else {
+      nextSection.style.display = 'none';
+    }
+  }
 }
 
 function loadAssistedNext() {
@@ -402,6 +446,7 @@ function assistedPerformAction(action) {
     assistedSkippedItemIds.delete(assistedCurrentItemId);
   }
   body.set('exclude_item_ids', Array.from(assistedSkippedItemIds).join(','));
+  body.set('picker_name', getUserName());
   assistedSetButtonsDisabled(true);
   fetch(root.dataset.actionUrl, {
     method: 'POST',
@@ -417,6 +462,31 @@ function assistedPerformAction(action) {
     .then((data) => renderAssistedSnapshot(data))
     .catch(() => loadAssistedNext())
     .finally(() => assistedSetButtonsDisabled(false));
+}
+
+function loadScoreboard() {
+  const el = document.getElementById('scoreboard-body');
+  if (!el) return;
+  const items = document.getElementById('items');
+  if (!items) return;
+  const batchId = items.dataset.batchId;
+  fetch(`/api/batch/${batchId}/scoreboard`)
+    .then((resp) => resp.json())
+    .then((data) => {
+      const body = document.getElementById('scoreboard-body');
+      if (!body) return;
+      if (!data.length) {
+        body.innerHTML = '<div class="scoreboard-empty">No picks yet</div>';
+        return;
+      }
+      body.innerHTML = data
+        .map((p, i) => {
+          const medal = i === 0 ? '1st' : i === 1 ? '2nd' : i === 2 ? '3rd' : `${i + 1}th`;
+          return `<div class="scoreboard-entry"><span class="scoreboard-rank">${medal}</span> <span class="scoreboard-name">${p.picker_name}</span> <span class="scoreboard-score">${p.net}</span></div>`;
+        })
+        .join('');
+    })
+    .catch(() => {});
 }
 
 function initAssistedPick() {
@@ -456,6 +526,7 @@ htmx.on('batch-counts-changed', () => {
       if (!current) return;
       current.innerHTML = html;
     });
+  loadScoreboard();
 });
 
 htmx.on('refresh-items', () => {
@@ -505,9 +576,11 @@ document.body.addEventListener('htmx:swapError', (evt) => {
 
 document.addEventListener('DOMContentLoaded', () => {
   initUserName();
+  syncPickerNameHidden();
   initRealtime();
   applySetCollapseState();
   initAssistedPick();
+  loadScoreboard();
 });
 
 

@@ -5,11 +5,19 @@
   <div><a class="btn secondary" href="/batch/{{ batch.id }}">Back</a></div>
 </div>
 <div class="panel">
+  <div class="item-row" style="font-weight:700;border-bottom:2px solid #c8d6f2;">
+    <div>Card</div>
+    <div>Type</div>
+    <div>Qty</div>
+    <div>Picker</div>
+    <div>Time</div>
+  </div>
   {% for e in events %}
     <div class="item-row">
       <div class="item-name">{{ e.card_name }}</div>
       <div>{{ e.type }}</div>
       <div>{{ e.qty }}</div>
+      <div>{{ e.picker_name or 'anonymous' }}</div>
       <div>{{ e.timestamp }}</div>
     </div>
   {% else %}
