@@ -39,7 +39,11 @@
 </div>
 
 <div id="items" class="panel" data-url="/batch/{{ batch.id }}/items" data-batch-id="{{ batch.id }}" hx-get="/batch/{{ batch.id }}/items" hx-trigger="load">
-  Loading...
+  <div style="padding: 16px;">
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+  </div>
 </div>
 
 <div id="card-modal"></div>

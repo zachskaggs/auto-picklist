@@ -203,8 +203,10 @@ def batches(request: Request, auth=Depends(require_auth)):
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT b.*, 
-              (SELECT COUNT(*) FROM batch_items bi WHERE bi.batch_id = b.id AND bi.qty_picked < bi.qty_required) AS remaining_count
+            SELECT b.*,
+              (SELECT COUNT(*) FROM batch_items bi WHERE bi.batch_id = b.id AND bi.qty_picked < bi.qty_required) AS remaining_count,
+              (SELECT COALESCE(SUM(bi.qty_picked), 0) FROM batch_items bi WHERE bi.batch_id = b.id) AS picked_qty,
+              (SELECT COALESCE(SUM(bi.qty_required), 0) FROM batch_items bi WHERE bi.batch_id = b.id) AS total_qty
             FROM batches b
             WHERE b.status = 'open'
             ORDER BY b.created_at DESC
