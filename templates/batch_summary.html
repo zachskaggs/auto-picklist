@@ -7,22 +7,37 @@
     <a class="btn secondary" href="/batch/{{ batch.id }}/missing.csv">Export missing CSV</a>
   </div>
 </div>
-<div class="panel" style="padding: 12px 16px; display: flex; gap: 16px;">
+<div class="panel summary-stats">
   <div><strong>{{ total }}</strong> total cards</div>
   <div><strong>{{ picked }}</strong> picked cards</div>
   <div><strong>{{ missing }}</strong> missing</div>
 </div>
-<div class="panel">
-  <div class="item-row"><strong>Missing items</strong></div>
-  {% for item in items %}
-    <div class="item-row">
-      <div class="item-name">{{ item.card_name }}</div>
-      <div>{{ item.set_code | upper }}</div>
-      <div>{{ item.qty_required }}</div>
-      <div>{{ item.missing_note or '' }}</div>
-    </div>
-  {% else %}
-    <div class="item-row">No missing items</div>
-  {% endfor %}
+<div class="panel" style="overflow-x: auto;">
+  <table class="events-table">
+    <thead>
+      <tr>
+        <th>Card</th>
+        <th>Set</th>
+        <th>Qty</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="item-name">{{ item.card_name }}</td>
+        <td>{{ item.set_code | upper }}</td>
+        <td>{{ item.qty_required }}</td>
+        <td>{{ item.missing_note or '' }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4">
+          <div class="empty-state">No missing items</div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}

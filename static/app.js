@@ -1,10 +1,12 @@
-﻿function showToast(message, undoUrl, itemId) {
+/* ── Toast Notifications ──────────────────────────────── */
+function showToast(message, undoUrl, itemId) {
   const toast = document.getElementById('toast');
   const msg = document.getElementById('toast-msg');
   const btn = document.getElementById('toast-undo');
   const countdown = document.getElementById('toast-count');
   let remaining = 5;
   msg.textContent = message;
+  toast.classList.remove('hiding');
   toast.classList.add('show');
   countdown.textContent = remaining;
   const timer = setInterval(() => {
@@ -12,7 +14,7 @@
     countdown.textContent = remaining;
     if (remaining <= 0) {
       clearInterval(timer);
-      toast.classList.remove('show');
+      hideToast();
     }
   }, 1000);
 
@@ -24,7 +26,7 @@
     const undoBody = new URLSearchParams();
     undoBody.set('picker_name', getUserName());
     fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: undoBody.toString() }).then(() => {
-      toast.classList.remove('show');
+      hideToast();
       htmx.trigger(document.body, 'batch-counts-changed');
       if (itemId) { refreshItem(itemId); }
       htmx.trigger(document.body, 'refresh-items');
@@ -32,18 +34,73 @@
   };
 }
 
+function hideToast() {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.classList.add('hiding');
+  toast.addEventListener('animationend', () => {
+    toast.classList.remove('show', 'hiding');
+  }, { once: true });
+}
+
+/* ── High Contrast ────────────────────────────────────── */
 function toggleContrast() {
   document.body.classList.toggle('high-contrast');
 }
 
+/* ── Mark Missing Modal ───────────────────────────────── */
 function markMissing(itemId) {
-  const note = prompt('Missing note (optional):', '');
-  if (note === null) {
-    // User canceled; do not mark missing.
+  const overlay = document.getElementById('missing-modal-overlay');
+  const input = document.getElementById('missing-note-input');
+  const confirmBtn = document.getElementById('missing-confirm-btn');
+  const cancelBtn = document.getElementById('missing-cancel-btn');
+
+  if (!overlay || !input || !confirmBtn || !cancelBtn) {
+    // Fallback to prompt if modal not in DOM
+    const note = prompt('Missing note (optional):', '');
+    if (note === null) return;
+    submitMissing(itemId, note);
     return;
   }
+
+  input.value = '';
+  overlay.style.display = 'flex';
+  input.focus();
+
+  const cleanup = () => {
+    overlay.style.display = 'none';
+    confirmBtn.onclick = null;
+    cancelBtn.onclick = null;
+    overlay.onclick = null;
+    input.onkeydown = null;
+  };
+
+  confirmBtn.onclick = () => {
+    cleanup();
+    submitMissing(itemId, input.value);
+  };
+
+  cancelBtn.onclick = () => {
+    cleanup();
+  };
+
+  overlay.onclick = (e) => {
+    if (e.target === overlay) cleanup();
+  };
+
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      cleanup();
+      submitMissing(itemId, input.value);
+    } else if (e.key === 'Escape') {
+      cleanup();
+    }
+  };
+}
+
+function submitMissing(itemId, note) {
   const body = new URLSearchParams();
-  body.set('note', note);
+  body.set('note', note || '');
   body.set('picker_name', getUserName());
   const form = document.getElementById('filters');
   const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
@@ -59,6 +116,7 @@ function markMissing(itemId) {
   });
 }
 
+/* ── Image Operations ─────────────────────────────────── */
 function toggleImageSize(imgId) {
   const img = document.getElementById(imgId);
   if (!img) return;
@@ -67,6 +125,7 @@ function toggleImageSize(imgId) {
   img.src = img.dataset.base + '?size=' + size;
 }
 
+/* ── Card Modal ───────────────────────────────────────── */
 function ensureCardModalTarget() {
   let container = document.getElementById('card-modal');
   if (!container) {
@@ -87,6 +146,9 @@ function closeCardModal() {
 document.addEventListener('keydown', (evt) => {
   if (evt.key === 'Escape') {
     closeCardModal();
+    // Also close missing modal
+    const missingOverlay = document.getElementById('missing-modal-overlay');
+    if (missingOverlay) missingOverlay.style.display = 'none';
   }
 });
 
@@ -104,6 +166,7 @@ function openCard(itemId) {
   htmx.ajax('GET', `/card/modal?item_id=${itemId}`, { target: container, swap: 'innerHTML' });
 }
 
+/* ── Picker Name ──────────────────────────────────────── */
 function getUserName() {
   const input = document.getElementById('user-name');
   if (!input) return 'anonymous';
@@ -129,6 +192,7 @@ function syncPickerNameHidden() {
   }
 }
 
+/* ── Set Management ───────────────────────────────────── */
 function reserveSet(setCode) {
   const items = document.getElementById('items');
   if (!items) return;
@@ -162,6 +226,11 @@ function toggleSetGroup(setCode) {
   const group = document.querySelector(`.set-group[data-set-code="${setCode}"]`);
   if (!group) return;
   group.classList.toggle('collapsed');
+  // Update aria-expanded
+  const btn = group.querySelector('.collapse-btn');
+  if (btn) {
+    btn.setAttribute('aria-expanded', !group.classList.contains('collapsed'));
+  }
   const key = `set_collapsed_${setCode || 'unknown'}`;
   localStorage.setItem(key, group.classList.contains('collapsed') ? '1' : '0');
 }
@@ -170,10 +239,16 @@ function applySetCollapseState(root = document) {
   root.querySelectorAll('.set-group').forEach((group) => {
     const setCode = group.dataset.setCode || 'unknown';
     const key = `set_collapsed_${setCode}`;
-    if (localStorage.getItem(key) === '1') {
+    const collapsed = localStorage.getItem(key) === '1';
+    if (collapsed) {
       group.classList.add('collapsed');
     } else {
       group.classList.remove('collapsed');
+    }
+    // Set aria-expanded on collapse buttons
+    const btn = group.querySelector('.collapse-btn');
+    if (btn) {
+      btn.setAttribute('aria-expanded', !collapsed);
     }
   });
 }
@@ -187,13 +262,13 @@ function pruneEmptySetGroups(root = document) {
   });
 }
 
+/* ── Item Refresh ─────────────────────────────────────── */
 function refreshItem(itemId) {
   const items = document.getElementById('items');
   const form = document.getElementById('filters');
   const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
   const url = `/items/${itemId}/row${params ? `?${params}` : ''}`;
   fetch(url).then(async (resp) => {
-    // Re-read the row after the response to avoid races with concurrent updates.
     let row = document.getElementById(`item-${itemId}`);
     if (resp.status === 204) {
       if (row && row.parentNode) row.remove();
@@ -208,15 +283,18 @@ function refreshItem(itemId) {
       const updated = document.getElementById(`item-${itemId}`);
       if (updated) {
         htmx.process(updated);
+        // Flash green on pick
+        updated.classList.add('just-picked');
+        setTimeout(() => updated.classList.remove('just-picked'), 800);
       }
       pruneEmptySetGroups(document);
     } else if (items && !document.getElementById(`item-${itemId}`)) {
-      // If the row is missing, refresh the full list to preserve sort order.
       htmx.trigger(document.body, 'refresh-items');
     }
   });
 }
 
+/* ── Realtime WebSocket ───────────────────────────────── */
 function initRealtime() {
   const items = document.getElementById('items');
   if (!items) return;
@@ -253,6 +331,7 @@ function initRealtime() {
   connect();
 }
 
+/* ── ManaPool ─────────────────────────────────────────── */
 function generateManaPoolPicklist() {
   const btn = document.getElementById('mp-generate-btn');
   const status = document.getElementById('mp-status');
@@ -300,6 +379,7 @@ function generateManaPoolPicklist() {
     });
 }
 
+/* ── Assisted Pick ────────────────────────────────────── */
 function assistedModeLabel(mode) {
   if (mode === 'bottom_up') return 'Bottom up';
   if (mode === 'middle_out') return 'Middle out';
@@ -324,6 +404,17 @@ function renderAssistedSnapshot(data) {
   done.style.display = 'none';
   layout.style.display = 'grid';
   assistedCurrentItemId = data.item.id;
+
+  // Card swap animation
+  const detailPane = document.querySelector('.assisted-detail-pane');
+  if (detailPane) {
+    detailPane.classList.remove('assisted-card-enter');
+    void detailPane.offsetWidth; // force reflow
+    detailPane.classList.add('assisted-card-enter');
+    detailPane.addEventListener('animationend', () => {
+      detailPane.classList.remove('assisted-card-enter');
+    }, { once: true });
+  }
 
   const modeLabel = document.getElementById('assisted-mode-label');
   const progress = document.getElementById('assisted-progress');
@@ -398,7 +489,7 @@ function renderAssistedSnapshot(data) {
         nextNoImg.style.display = 'block';
       }
       nextSection.style.display = 'flex';
-      // Preload next image for faster display
+      // Preload next image
       if (data.next_item.image_url) {
         const preload = new Image();
         preload.src = data.next_item.image_url;
@@ -465,6 +556,7 @@ function assistedPerformAction(action) {
     .finally(() => assistedSetButtonsDisabled(false));
 }
 
+/* ── Scoreboard ───────────────────────────────────────── */
 function loadScoreboard() {
   const el = document.getElementById('scoreboard-body');
   if (!el) return;
@@ -490,6 +582,7 @@ function loadScoreboard() {
     .catch(() => {});
 }
 
+/* ── Assisted Pick Init ───────────────────────────────── */
 function initAssistedPick() {
   const root = document.getElementById('assisted-pick-root');
   if (!root) return;
@@ -497,6 +590,7 @@ function initAssistedPick() {
   if (chooser) chooser.style.display = 'block';
 }
 
+/* ── Scroll Header Hide ──────────────────────────────── */
 let scrollTicking = false;
 let lastScrollY = 0;
 window.addEventListener('scroll', () => {
@@ -519,6 +613,41 @@ window.addEventListener('scroll', () => {
   });
 });
 
+/* ── HTMX Progress Bar ───────────────────────────────── */
+let htmxActiveRequests = 0;
+
+function showHtmxProgress() {
+  let bar = document.getElementById('htmx-progress');
+  if (!bar) return;
+  bar.style.width = '0%';
+  bar.style.display = 'block';
+  // Animate to 70% quickly
+  requestAnimationFrame(() => {
+    bar.style.width = '70%';
+  });
+}
+
+function hideHtmxProgress() {
+  let bar = document.getElementById('htmx-progress');
+  if (!bar) return;
+  bar.style.width = '100%';
+  setTimeout(() => {
+    bar.style.display = 'none';
+    bar.style.width = '0%';
+  }, 300);
+}
+
+document.body.addEventListener('htmx:beforeRequest', () => {
+  htmxActiveRequests++;
+  if (htmxActiveRequests === 1) showHtmxProgress();
+});
+
+document.body.addEventListener('htmx:afterRequest', () => {
+  htmxActiveRequests = Math.max(0, htmxActiveRequests - 1);
+  if (htmxActiveRequests === 0) hideHtmxProgress();
+});
+
+/* ── HTMX Events ─────────────────────────────────────── */
 htmx.on('batch-counts-changed', () => {
   const el = document.getElementById('batch-counts');
   if (!el) return;
@@ -550,6 +679,7 @@ htmx.on('refresh-items', () => {
     });
 });
 
+/* ── HTMX Swap Error Recovery ─────────────────────────── */
 document.body.addEventListener('htmx:swapError', (evt) => {
   const detail = evt.detail || {};
   const target = detail.target;
@@ -566,7 +696,6 @@ document.body.addEventListener('htmx:swapError', (evt) => {
     return;
   }
 
-  // If the items target was detached mid-swap, refresh the list to recover.
   if (targetMissing && (targetId === 'items' || responseUrl.includes('/batch/'))) {
     htmx.trigger(document.body, 'refresh-items');
     return;
@@ -577,6 +706,7 @@ document.body.addEventListener('htmx:swapError', (evt) => {
   }
 });
 
+/* ── Init ─────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initUserName();
   syncPickerNameHidden();
@@ -585,24 +715,3 @@ document.addEventListener('DOMContentLoaded', () => {
   initAssistedPick();
   loadScoreboard();
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -10,9 +10,20 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" />
   </head>
   <body>
+    <div id="htmx-progress" class="htmx-progress" style="display:none;"></div>
     {% block content %}{% endblock %}
-    <div id="toast" class="toast">
+    <div id="toast" class="toast" role="status" aria-live="polite">
       <span id="toast-msg"></span> <button id="toast-undo" class="btn secondary">UNDO</button> (<span id="toast-count">5</span>s)
+    </div>
+    <div id="missing-modal-overlay" class="missing-modal-overlay" style="display:none;" role="dialog" aria-labelledby="missing-modal-title">
+      <div class="missing-modal">
+        <h3 id="missing-modal-title">Mark as Missing</h3>
+        <input id="missing-note-input" class="input" type="text" placeholder="Missing note (optional)" aria-label="Missing note" />
+        <div class="missing-modal-actions">
+          <button id="missing-cancel-btn" class="btn secondary" type="button">Cancel</button>
+          <button id="missing-confirm-btn" class="btn danger" type="button">Mark Missing</button>
+        </div>
+      </div>
     </div>
     <script src="/static/app.js"></script>
   </body>
