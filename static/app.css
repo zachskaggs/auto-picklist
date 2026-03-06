@@ -166,6 +166,14 @@ body {
   animation: panel-enter 0.3s ease;
 }
 
+/* panel-static: same look as .panel but no animation (safe for display:none toggling in Safari) */
+.panel-static {
+  margin: var(--space-md) var(--space-lg);
+  background: var(--panel);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 18px var(--shadow);
+}
+
 /* ── Batch List ───────────────────────────────────────── */
 .batch-row {
   display: grid;

@@ -37,6 +37,7 @@ app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
+TEMPLATES.env.globals['cache_v'] = get_build_date().replace(':', '').replace('-', '')
 
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'static')), name='static')
 
