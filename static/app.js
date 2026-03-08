@@ -574,8 +574,8 @@ function loadScoreboard() {
       }
       body.innerHTML = data
         .map((p, i) => {
-          const medal = i === 0 ? '1st' : i === 1 ? '2nd' : i === 2 ? '3rd' : `${i + 1}th`;
-          return `<div class="scoreboard-entry"><span class="scoreboard-rank">${medal}</span> <span class="scoreboard-name">${p.picker_name}</span> <span class="scoreboard-score">${p.net}</span></div>`;
+          const rank = i + 1;
+          return `<div class="scoreboard-entry"><span class="scoreboard-rank">#${rank}</span> <span class="scoreboard-name">${p.picker_name}</span> <span class="scoreboard-score">${p.picks} picks</span></div>`;
         })
         .join('');
     })

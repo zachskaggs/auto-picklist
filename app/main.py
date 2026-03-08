@@ -745,22 +745,16 @@ def batch_scoreboard(batch_id: int, auth=Depends(require_auth)):
             """
             SELECT
               COALESCE(e.picker_name, 'anonymous') AS picker_name,
-              SUM(CASE WHEN e.type = 'pick' THEN e.qty ELSE 0 END) AS picks,
-              SUM(CASE WHEN e.type = 'undo' THEN e.qty ELSE 0 END) AS undos
+              SUM(e.qty) AS picks
             FROM events e
             JOIN batch_items bi ON bi.id = e.batch_item_id
-            WHERE bi.batch_id = ?
+            WHERE bi.batch_id = ? AND e.type = 'pick'
             GROUP BY COALESCE(e.picker_name, 'anonymous')
-            ORDER BY (SUM(CASE WHEN e.type = 'pick' THEN e.qty ELSE 0 END) - SUM(CASE WHEN e.type = 'undo' THEN e.qty ELSE 0 END)) DESC
+            ORDER BY SUM(e.qty) DESC
             """,
             (batch_id,),
         ).fetchall()
-    scoreboard = []
-    for row in rows:
-        net = row['picks'] - row['undos']
-        if net > 0:
-            scoreboard.append({'picker_name': row['picker_name'], 'picks': row['picks'], 'undos': row['undos'], 'net': net})
-    return JSONResponse(scoreboard)
+    return JSONResponse([{'picker_name': row['picker_name'], 'picks': row['picks']} for row in rows if row['picks'] > 0])
 
 
 @app.get('/batch/{batch_id}/items', response_class=HTMLResponse)
