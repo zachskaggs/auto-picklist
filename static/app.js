@@ -173,11 +173,23 @@ function getUserName() {
   return input.value.trim() || 'anonymous';
 }
 
+function syncUserName() {
+  const name = getUserName();
+  const body = new URLSearchParams();
+  body.set('name', name);
+  fetch('/api/session/name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  }).catch(() => {});
+}
+
 function initUserName() {
   const input = document.getElementById('user-name');
   if (!input) return;
   const saved = localStorage.getItem('picker_name');
   input.value = saved || 'anonymous';
+  syncUserName();
   input.addEventListener('input', () => {
     const val = input.value.trim() || 'anonymous';
     localStorage.setItem('picker_name', val);
@@ -386,6 +398,37 @@ function assistedModeLabel(mode) {
   return 'Top down';
 }
 
+const _ENGLISH_LANGS = new Set(['en', 'english']);
+
+function _isNonEnglish(lang) {
+  return lang && !_ENGLISH_LANGS.has(lang.toLowerCase());
+}
+
+function _loadAssistedImage(img, url, noImage, attempt) {
+  attempt = attempt || 0;
+  img.onerror = () => {
+    img.onerror = null;
+    if (attempt < 2) {
+      setTimeout(() => _loadAssistedImage(img, url, noImage, attempt + 1), Math.pow(2, attempt) * 600);
+    } else {
+      img.style.display = 'none';
+      noImage.textContent = 'Image failed — tap to retry';
+      noImage.style.cursor = 'pointer';
+      noImage.onclick = () => {
+        noImage.onclick = null;
+        noImage.textContent = 'Retrying…';
+        noImage.style.cursor = '';
+        _loadAssistedImage(img, url, noImage, 0);
+      };
+      noImage.style.display = 'block';
+    }
+  };
+  const sep = url.includes('?') ? '&' : '?';
+  img.src = attempt > 0 ? `${url}${sep}t=${Date.now()}` : url;
+  img.style.display = 'block';
+  noImage.style.display = 'none';
+}
+
 function renderAssistedSnapshot(data) {
   const layout = document.getElementById('assisted-layout');
   const done = document.getElementById('assisted-done');
@@ -428,6 +471,7 @@ function renderAssistedSnapshot(data) {
   const image = document.getElementById('assisted-card-image');
   const noImage = document.getElementById('assisted-no-image');
   const pickAll = document.getElementById('assisted-pick-all-btn');
+  const langAlert = document.getElementById('assisted-lang-alert');
 
   modeLabel.textContent = `Mode: ${assistedModeLabel(data.mode)}`;
   progress.textContent = `${data.remaining_cards} cards left | ${data.remaining_copies} copies left`;
@@ -451,24 +495,36 @@ function renderAssistedSnapshot(data) {
 
   qty.textContent = `Remaining ${data.item.qty_remaining} of ${data.item.qty_required}`;
   qty.classList.toggle('assisted-qty-multi', data.item.qty_required > 1);
-  pickAll.style.display = data.item.qty_remaining > 1 ? 'block' : 'none';
+  const showPickAll = data.item.qty_remaining > 1;
+  pickAll.style.visibility = showPickAll ? 'visible' : 'hidden';
+  pickAll.disabled = !showPickAll;
   layout.classList.toggle('assisted-high-value', typeof data.item.purchase_price === 'number' && data.item.purchase_price > 5);
 
+  // Non-English alert banner
+  if (langAlert) {
+    if (_isNonEnglish(data.item.language)) {
+      langAlert.textContent = `\u26A0 Non-English: ${data.item.language}`;
+      langAlert.style.display = 'block';
+      layout.classList.add('assisted-lang-border');
+    } else {
+      langAlert.style.display = 'none';
+      layout.classList.remove('assisted-lang-border');
+    }
+  }
+
+  // Image loading with retry
   if (data.item.image_url) {
-    image.onerror = () => {
-      image.style.display = 'none';
-      noImage.style.display = 'block';
-    };
-    image.src = data.item.image_url;
-    image.style.display = 'block';
-    noImage.style.display = 'none';
+    _loadAssistedImage(image, data.item.image_url, noImage, 0);
   } else {
     image.removeAttribute('src');
     image.style.display = 'none';
+    noImage.textContent = 'No image available';
+    noImage.style.cursor = '';
+    noImage.onclick = null;
     noImage.style.display = 'block';
   }
 
-  // Coming Next preview
+  // Coming Next preview (visibility-based to prevent layout shift)
   const nextSection = document.getElementById('assisted-next-preview');
   if (nextSection) {
     if (data.next_item) {
@@ -488,14 +544,14 @@ function renderAssistedSnapshot(data) {
         nextImg.style.display = 'none';
         nextNoImg.style.display = 'block';
       }
-      nextSection.style.display = 'flex';
       // Preload next image
       if (data.next_item.image_url) {
         const preload = new Image();
         preload.src = data.next_item.image_url;
       }
+      nextSection.style.visibility = 'visible';
     } else {
-      nextSection.style.display = 'none';
+      nextSection.style.visibility = 'hidden';
     }
   }
 }
@@ -561,8 +617,9 @@ function loadScoreboard() {
   const el = document.getElementById('scoreboard-body');
   if (!el) return;
   const items = document.getElementById('items');
-  if (!items) return;
-  const batchId = items.dataset.batchId;
+  const root = document.getElementById('assisted-pick-root');
+  const batchId = items ? items.dataset.batchId : (root ? root.dataset.batchId : null);
+  if (!batchId) return;
   fetch(`/api/batch/${batchId}/scoreboard`)
     .then((resp) => resp.json())
     .then((data) => {
@@ -588,6 +645,8 @@ function initAssistedPick() {
   if (!root) return;
   const chooser = document.getElementById('assisted-mode-chooser');
   if (chooser) chooser.style.display = 'block';
+  loadScoreboard();
+  setInterval(loadScoreboard, 15000);
 }
 
 /* ── Scroll Header Hide ──────────────────────────────── */

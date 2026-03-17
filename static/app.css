@@ -523,6 +523,7 @@ body {
 
 .badge-missing { background: #fee2e2; color: #991b1b; }
 .badge-lang { background: #e0f2fe; color: #075985; }
+.badge-lang-foreign { background: #fef3c7; color: #92400e; font-weight: 700; border: 1px solid #f59e0b; }
 .badge-printing { background: #ede9fe; color: #5b21b6; }
 
 .badge-foil {
@@ -812,11 +813,30 @@ body {
 
 .assisted-image-pane {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   background: #f6f9ff;
   border-radius: 14px;
   min-height: 70vh;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.lang-alert {
+  width: 100%;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 700;
+  font-size: 20px;
+  padding: 10px 16px;
+  text-align: center;
+  border-bottom: 2px solid #f59e0b;
+  flex-shrink: 0;
+}
+
+.assisted-lang-border .assisted-image-pane {
+  border: 3px solid #f59e0b;
 }
 
 .assisted-card-image {
@@ -966,6 +986,7 @@ body {
   gap: 14px;
   padding: var(--space-md) var(--space-lg);
   margin: 0 var(--space-lg) 14px;
+  min-height: 70px;
 }
 
 .assisted-next-label {
@@ -1154,22 +1175,48 @@ body {
   .picklist-row { grid-template-columns: 2fr 1.1fr 1fr 1fr; }
   .set-row { grid-template-columns: 1fr; gap: 10px; }
   .set-actions { flex-wrap: wrap; justify-content: flex-start; }
-  .assisted-layout { grid-template-columns: 1fr; min-height: auto; }
-  .assisted-image-pane { min-height: 45vh; }
-  .assisted-card-name { font-size: 30px; }
+  .assisted-image-pane { min-height: 55vh; }
+  .assisted-card-name { font-size: 24px; }
   .assisted-status-line { font-size: 16px; }
   .assisted-card-subtitle { font-size: 18px; }
   .assisted-prominent { grid-template-columns: 1fr; }
   .assisted-prominent-value { font-size: 26px; }
   .assisted-qty { font-size: 28px; }
-  .assisted-action-btn { font-size: 30px; min-height: 48px; }
-  .assisted-mode-btn { min-height: 48px; }
+  .assisted-action-btn { font-size: 30px; min-height: 56px; touch-action: manipulation; }
+  .assisted-mode-btn { min-height: 48px; touch-action: manipulation; }
   .action-btn { min-height: 44px; }
   .assisted-mode-buttons { grid-template-columns: 1fr; }
   .assisted-next-preview { margin: 0 var(--space-md) var(--space-md); flex-wrap: wrap; }
   .assisted-next-thumb { width: 45px; height: 63px; }
   .assisted-next-name { font-size: 16px; }
   .assisted-next-set { font-size: 14px; }
+}
+
+/* Phone (<768px): single col, fixed action bar */
+@media (max-width: 768px) {
+  .assisted-layout { grid-template-columns: 1fr; min-height: auto; }
+  .assisted-image-pane { min-height: 40vh; }
+  .assisted-card-name { font-size: 26px; }
+  .assisted-root { overscroll-behavior: none; }
+  .assisted-actions {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--panel);
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    box-shadow: 0 -3px 12px rgba(0,0,0,0.12);
+    z-index: 20;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    will-change: transform;
+  }
+  .assisted-layout { padding-bottom: calc(200px + env(safe-area-inset-bottom)); }
+  .assisted-action-btn { font-size: 22px; padding: 14px 10px; }
+  .assisted-mode-buttons { grid-template-columns: 1fr; }
+  .assisted-mode-btn { font-size: 22px; padding: 18px 14px; }
+  .assisted-next-preview { display: none !important; }
 }
 
 /* ── Small Phone (<=480px) ────────────────────────────── */
