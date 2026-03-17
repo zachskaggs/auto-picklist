@@ -32,6 +32,10 @@ BASIC_AUTH_PASS = os.getenv('BASIC_AUTH_PASS')
 MANAPOOL_RECENT_MINUTES = int(os.getenv('MANAPOOL_RECENT_MINUTES', '10'))
 MANAPOOL_MAX_WORKERS = int(os.getenv('MANAPOOL_MAX_WORKERS', '8'))
 
+# In-memory map of session_id -> display name for scoreboard labels.
+# Populated when users register their name via POST /api/session/name.
+_session_names: dict[str, str] = {}
+
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
@@ -187,6 +191,10 @@ def _extract_purchase_price(item, single):
 @app.on_event('startup')
 def on_startup():
     init_db()
+    # Re-hydrate in-memory name map from DB so names survive server restarts.
+    with get_conn() as conn:
+        for row in conn.execute('SELECT session_id, display_name FROM session_names').fetchall():
+            _session_names[row['session_id']] = row['display_name']
 
 
 @app.websocket('/ws/batch/{batch_id}')
@@ -621,6 +629,7 @@ def _assisted_snapshot(conn, batch_id, mode, excluded_ids=None):
         'mode': mode,
         'remaining_cards': remaining_cards,
         'remaining_copies': remaining_copies,
+        'next_item': next_item,
         'item': {
             'id': current['id'],
             'card_name': current.get('card_name') or '',
@@ -1027,20 +1036,22 @@ def card_modal(request: Request, item_id: int, auth=Depends(require_auth)):
 
 @app.get('/card/image/{card_id}')
 def card_image(card_id: str, size: str = 'normal', auth=Depends(require_auth)):
+    _img_headers = {'Cache-Control': 'public, max-age=86400'}
     path = Path('data/cache/images') / f"{card_id}_{size}.jpg"
     if path.exists():
-        return FileResponse(str(path))
+        return FileResponse(str(path), headers=_img_headers)
     with get_conn() as conn:
         card = scryfall.fetch_card_by_id(conn, card_id)
         if card:
             scryfall.ensure_image_cached(card, size=size)
     if path.exists():
-        return FileResponse(str(path))
+        return FileResponse(str(path), headers=_img_headers)
     raise HTTPException(status_code=404)
 
 
 @app.get('/api/items/{item_id}/image')
 def item_image(item_id: int, size: str = 'large', auth=Depends(require_auth)):
+    _img_headers = {'Cache-Control': 'public, max-age=86400'}
     with get_conn() as conn:
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
         if not item:
@@ -1050,8 +1061,55 @@ def item_image(item_id: int, size: str = 'large', auth=Depends(require_auth)):
         if card:
             path = scryfall.ensure_image_cached(card, size=size)
             if path and path.exists():
-                return FileResponse(str(path))
+                return FileResponse(str(path), headers=_img_headers)
     raise HTTPException(status_code=404)
+
+
+@app.post('/api/session/name')
+async def set_session_name(request: Request, name: str = Form(...), auth=Depends(require_auth)):
+    """Store a display name for this session so the scoreboard can show it."""
+    session_id = request.session.get('sid') or str(uuid.uuid4())
+    request.session['sid'] = session_id
+    clean_name = (name or '').strip()[:80]
+    if clean_name:
+        _session_names[session_id] = clean_name
+        with get_conn() as conn:
+            conn.execute(
+                'INSERT OR REPLACE INTO session_names (session_id, display_name, updated_at) VALUES (?, ?, ?)',
+                (session_id, clean_name, _utc_now()),
+            )
+            conn.commit()
+    return JSONResponse({'ok': True})
+
+
+@app.get('/batch/{batch_id}/scoreboard', response_class=HTMLResponse)
+def batch_scoreboard(request: Request, batch_id: int, auth=Depends(require_auth)):
+    with get_conn() as conn:
+        batch = conn.execute('SELECT id FROM batches WHERE id = ?', (batch_id,)).fetchone()
+        if not batch:
+            raise HTTPException(status_code=404)
+        rows = conn.execute(
+            '''SELECT e.user_session_id, SUM(e.qty) as total_picks
+               FROM events e
+               JOIN batch_items bi ON e.batch_item_id = bi.id
+               WHERE bi.batch_id = ? AND e.type = \'pick\'
+               GROUP BY e.user_session_id
+               ORDER BY total_picks DESC''',
+            (batch_id,),
+        ).fetchall()
+    my_sid = request.session.get('sid')
+    scoreboard = []
+    for row in rows:
+        sid = row['user_session_id']
+        name = _session_names.get(sid) if sid else None
+        scoreboard.append({
+            'name': name or (sid[:8] + '…' if sid else 'Anonymous'),
+            'total_picks': row['total_picks'],
+            'is_me': sid == my_sid,
+        })
+    return TEMPLATES.TemplateResponse('partials/scoreboard.html', {
+        'request': request, 'scoreboard': scoreboard,
+    })
 
 
 @app.get('/cards/search', response_class=HTMLResponse)
