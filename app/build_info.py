@@ -15,4 +15,7 @@ def get_version() -> str:
 
 
 def get_build_date() -> str:
-    return os.getenv('BUILD_DATE') or _read_file(Path(__file__).resolve().parent.parent / 'BUILD_DATE') or 'unknown'
+    env = os.getenv('BUILD_DATE', '')
+    if env and env != 'unknown':
+        return env
+    return _read_file(Path(__file__).resolve().parent.parent / 'BUILD_DATE') or 'unknown'

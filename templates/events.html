@@ -4,16 +4,34 @@
   <div class="title">Audit Log - {{ batch.name }}</div>
   <div><a class="btn secondary" href="/batch/{{ batch.id }}">Back</a></div>
 </div>
-<div class="panel">
-  {% for e in events %}
-    <div class="item-row">
-      <div class="item-name">{{ e.card_name }}</div>
-      <div>{{ e.type }}</div>
-      <div>{{ e.qty }}</div>
-      <div>{{ e.timestamp }}</div>
-    </div>
-  {% else %}
-    <div class="item-row">No events</div>
-  {% endfor %}
+<div class="panel" style="overflow-x: auto;">
+  <table class="events-table">
+    <thead>
+      <tr>
+        <th>Card</th>
+        <th>Type</th>
+        <th>Qty</th>
+        <th>Picker</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td class="item-name">{{ e.card_name }}</td>
+        <td>{{ e.type }}</td>
+        <td>{{ e.qty }}</td>
+        <td>{{ e.picker_name or 'anonymous' }}</td>
+        <td>{{ e.timestamp }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5">
+          <div class="empty-state">No events recorded yet</div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}

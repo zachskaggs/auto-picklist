@@ -32,11 +32,16 @@ BASIC_AUTH_PASS = os.getenv('BASIC_AUTH_PASS')
 MANAPOOL_RECENT_MINUTES = int(os.getenv('MANAPOOL_RECENT_MINUTES', '10'))
 MANAPOOL_MAX_WORKERS = int(os.getenv('MANAPOOL_MAX_WORKERS', '8'))
 
+# In-memory map of session_id -> display name for scoreboard labels.
+# Populated when users register their name via POST /api/session/name.
+_session_names: dict[str, str] = {}
+
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
+TEMPLATES.env.globals['cache_v'] = get_build_date().replace(':', '').replace('-', '')
 
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'static')), name='static')
 
@@ -186,6 +191,10 @@ def _extract_purchase_price(item, single):
 @app.on_event('startup')
 def on_startup():
     init_db()
+    # Re-hydrate in-memory name map from DB so names survive server restarts.
+    with get_conn() as conn:
+        for row in conn.execute('SELECT session_id, display_name FROM session_names').fetchall():
+            _session_names[row['session_id']] = row['display_name']
 
 
 @app.websocket('/ws/batch/{batch_id}')
@@ -198,29 +207,15 @@ async def ws_batch(websocket: WebSocket, batch_id: int):
         manager.disconnect(batch_id, websocket)
 
 
-@app.post('/api/set-name')
-async def set_picker_name(request: Request, auth=Depends(require_auth)):
-    body = await request.json()
-    name = (body.get('name') or '').strip() or 'anonymous'
-    session_id = request.session.get('sid') or str(uuid.uuid4())
-    request.session['sid'] = session_id
-    with get_conn() as conn:
-        conn.execute(
-            'INSERT INTO session_names (user_session_id, picker_name, updated_at) VALUES (?, ?, ?)'
-            ' ON CONFLICT(user_session_id) DO UPDATE SET picker_name=excluded.picker_name, updated_at=excluded.updated_at',
-            (session_id, name, _utc_now()),
-        )
-        conn.commit()
-    return JSONResponse({'ok': True})
-
-
 @app.get('/', response_class=HTMLResponse)
 def batches(request: Request, auth=Depends(require_auth)):
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT b.*, 
-              (SELECT COUNT(*) FROM batch_items bi WHERE bi.batch_id = b.id AND bi.qty_picked < bi.qty_required) AS remaining_count
+            SELECT b.*,
+              (SELECT COUNT(*) FROM batch_items bi WHERE bi.batch_id = b.id AND bi.qty_picked < bi.qty_required) AS remaining_count,
+              (SELECT COALESCE(SUM(bi.qty_picked), 0) FROM batch_items bi WHERE bi.batch_id = b.id) AS picked_qty,
+              (SELECT COALESCE(SUM(bi.qty_required), 0) FROM batch_items bi WHERE bi.batch_id = b.id) AS total_qty
             FROM batches b
             WHERE b.status = 'open'
             ORDER BY b.created_at DESC
@@ -569,20 +564,40 @@ def _assisted_pending_items(conn, batch_id, excluded_ids=None):
     return items
 
 
-def _assisted_select_item(items, mode):
+def _assisted_select_item(items, mode, stable_set_order=None):
     if not items:
         return None
     if mode == 'bottom_up':
         return items[-1]
-    if mode == 'middle_out':
+    if mode == 'middle_out' and stable_set_order:
         by_set = {}
         for item in items:
             by_set.setdefault(item.get('set_code') or '', []).append(item)
-        for set_code in _middle_out_set_order(by_set.keys()):
+        for set_code in stable_set_order:
             set_items = by_set.get(set_code) or []
             if set_items:
                 return set_items[0]
     return items[0]
+
+
+def _assisted_select_next_item(items, mode, stable_set_order=None):
+    """Return the item that would come after the current one in the given mode."""
+    if len(items) < 2:
+        return None
+    if mode == 'bottom_up':
+        return items[-2]
+    if mode == 'middle_out' and stable_set_order:
+        by_set = {}
+        for item in items:
+            by_set.setdefault(item.get('set_code') or '', []).append(item)
+        count = 0
+        for set_code in stable_set_order:
+            for si in (by_set.get(set_code) or []):
+                count += 1
+                if count == 2:
+                    return si
+        return None
+    return items[1]
 
 
 def _assisted_snapshot(conn, batch_id, mode, excluded_ids=None):
@@ -599,12 +614,22 @@ def _assisted_snapshot(conn, batch_id, mode, excluded_ids=None):
             'remaining_cards': remaining_cards,
             'remaining_copies': remaining_copies,
         }
-    current = _assisted_select_item(items, mode)
-    return {
+    # Compute stable middle-out set order from ALL sets in batch (not just pending)
+    stable_set_order = None
+    if mode == 'middle_out':
+        all_set_codes = conn.execute(
+            'SELECT DISTINCT COALESCE(set_code, \'\') FROM batch_items WHERE batch_id = ?',
+            (batch_id,),
+        ).fetchall()
+        stable_set_order = _middle_out_set_order([r[0] for r in all_set_codes])
+    current = _assisted_select_item(items, mode, stable_set_order=stable_set_order)
+    next_item = _assisted_select_next_item(items, mode, stable_set_order=stable_set_order)
+    result = {
         'done': False,
         'mode': mode,
         'remaining_cards': remaining_cards,
         'remaining_copies': remaining_copies,
+        'next_item': next_item,
         'item': {
             'id': current['id'],
             'card_name': current.get('card_name') or '',
@@ -621,6 +646,15 @@ def _assisted_snapshot(conn, batch_id, mode, excluded_ids=None):
             'image_url': f"/api/items/{current['id']}/image?size=large",
         },
     }
+    if next_item:
+        result['next_item'] = {
+            'id': next_item['id'],
+            'card_name': next_item.get('card_name') or '',
+            'set_code': (next_item.get('set_code') or '').upper(),
+            'collector_number': next_item.get('collector_number'),
+            'image_url': f"/api/items/{next_item['id']}/image?size=normal",
+        }
+    return result
 
 
 @app.get('/api/batch/{batch_id}/assisted-next')
@@ -645,11 +679,13 @@ async def assisted_action(
     mode: str = Form('top_down'),
     exclude_item_ids: str = Form(''),
     note: str = Form(''),
+    picker_name: str = Form('anonymous'),
     auth=Depends(require_auth),
 ):
     mode = (mode or 'top_down').strip().lower()
     if mode not in ('top_down', 'bottom_up', 'middle_out'):
         mode = 'top_down'
+    picker_name = (picker_name or 'anonymous').strip() or 'anonymous'
     session_id = request.session.get('sid') or str(uuid.uuid4())
     request.session['sid'] = session_id
 
@@ -663,15 +699,15 @@ async def assisted_action(
             if qty_remaining > 0:
                 conn.execute('UPDATE batch_items SET qty_picked = qty_picked + 1, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
                 conn.execute(
-                    'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)',
-                    ('pick', item_id, 1, _utc_now(), session_id),
+                    'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)',
+                    ('pick', item_id, 1, _utc_now(), session_id, picker_name),
                 )
         elif action == 'pick_all':
             if qty_remaining > 0:
                 conn.execute('UPDATE batch_items SET qty_picked = qty_required, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
                 conn.execute(
-                    'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)',
-                    ('pick', item_id, qty_remaining, _utc_now(), session_id),
+                    'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)',
+                    ('pick', item_id, qty_remaining, _utc_now(), session_id, picker_name),
                 )
         elif action == 'missing':
             conn.execute(
@@ -679,8 +715,8 @@ async def assisted_action(
                 (note, _utc_now(), item_id),
             )
             conn.execute(
-                'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)',
-                ('missing', item_id, 0, _utc_now(), session_id),
+                'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)',
+                ('missing', item_id, 0, _utc_now(), session_id, picker_name),
             )
         elif action == 'skip':
             pass
@@ -708,26 +744,26 @@ def batch_counts(request: Request, batch_id: int, auth=Depends(require_auth)):
             (batch_id,),
         ).fetchone()['c']
         missing = conn.execute('SELECT COUNT(*) AS c FROM batch_items WHERE batch_id = ? AND is_missing = 1', (batch_id,)).fetchone()['c']
-        per_user = conn.execute(
-            '''SELECT COALESCE(sn.picker_name, 'anonymous') AS name,
-                      SUM(CASE WHEN e.type = 'pick' THEN e.qty ELSE 0 END) -
-                      SUM(CASE WHEN e.type = 'undo' THEN e.qty ELSE 0 END) AS net_picks
-               FROM events e
-               JOIN batch_items bi ON bi.id = e.batch_item_id
-               LEFT JOIN session_names sn ON sn.user_session_id = e.user_session_id
-               WHERE bi.batch_id = ? AND e.type IN ('pick', 'undo')
-               GROUP BY e.user_session_id
-               HAVING net_picks > 0
-               ORDER BY net_picks DESC''',
+    return TEMPLATES.TemplateResponse('partials/counts.html', {'request': request, 'total': total, 'remaining': remaining, 'missing': missing})
+
+
+@app.get('/api/batch/{batch_id}/scoreboard')
+def batch_scoreboard(batch_id: int, auth=Depends(require_auth)):
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+              COALESCE(e.picker_name, 'anonymous') AS picker_name,
+              SUM(e.qty) AS picks
+            FROM events e
+            JOIN batch_items bi ON bi.id = e.batch_item_id
+            WHERE bi.batch_id = ? AND e.type = 'pick'
+            GROUP BY COALESCE(e.picker_name, 'anonymous')
+            ORDER BY SUM(e.qty) DESC
+            """,
             (batch_id,),
         ).fetchall()
-    return TEMPLATES.TemplateResponse('partials/counts.html', {
-        'request': request,
-        'total': total,
-        'remaining': remaining,
-        'missing': missing,
-        'per_user': [dict(r) for r in per_user],
-    })
+    return JSONResponse([{'picker_name': row['picker_name'], 'picks': row['picks']} for row in rows if row['picks'] > 0])
 
 
 @app.get('/batch/{batch_id}/items', response_class=HTMLResponse)
@@ -757,6 +793,8 @@ def batch_items(request: Request, batch_id: int, game: str = '', q: str = '', sh
                 where.append('qty_picked < qty_required')
             if show_missing:
                 where.append('is_missing = 1')
+            else:
+                where.append('is_missing = 0')
         sql = f"SELECT * FROM batch_items WHERE {' AND '.join(where)}"
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
         reservations = _reservation_map(conn, batch_id)
@@ -778,6 +816,8 @@ def item_row(request: Request, item_id: int, show_picked: int = 0, show_missing:
             return HTMLResponse('', status_code=HTTP_204_NO_CONTENT)
         item = dict(item)
         if not show_all:
+            if not show_missing and item['is_missing']:
+                return HTMLResponse('', status_code=HTTP_204_NO_CONTENT)
             if not show_picked and item['qty_picked'] >= item['qty_required']:
                 return HTMLResponse('', status_code=HTTP_204_NO_CONTENT)
             if show_missing and not item['is_missing']:
@@ -808,9 +848,10 @@ async def reserve_set(request: Request, batch_id: int, set_code: str = Form(...)
     return JSONResponse({'ok': True, 'reserved_by': reserved_by})
 
 @app.post('/items/{item_id}/pick', response_class=HTMLResponse)
-async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, auth=Depends(require_auth)):
+async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = 'anonymous', auth=Depends(require_auth)):
     session_id = request.session.get('sid') or str(uuid.uuid4())
     request.session['sid'] = session_id
+    picker_name = (picker_name or 'anonymous').strip() or 'anonymous'
     with get_conn() as conn:
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
         if not item:
@@ -819,7 +860,7 @@ async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_m
         if qty_remaining <= 0:
             return HTMLResponse('', status_code=200)
         conn.execute('UPDATE batch_items SET qty_picked = qty_picked + 1, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
-        conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)', ('pick', item_id, 1, _utc_now(), session_id))
+        conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)', ('pick', item_id, 1, _utc_now(), session_id, picker_name))
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
     qty_rem = remaining_qty(item)
@@ -838,8 +879,9 @@ async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_m
 
 
 @app.post('/items/{item_id}/undo', response_class=HTMLResponse)
-async def undo_pick(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, auth=Depends(require_auth)):
+async def undo_pick(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = 'anonymous', auth=Depends(require_auth)):
     session_id = request.session.get('sid')
+    picker_name = (picker_name or 'anonymous').strip() or 'anonymous'
     with get_conn() as conn:
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
         if not item:
@@ -847,7 +889,7 @@ async def undo_pick(request: Request, item_id: int, show_picked: int = 0, show_m
         if item['qty_picked'] <= 0:
             return HTMLResponse('', status_code=200)
         conn.execute('UPDATE batch_items SET qty_picked = qty_picked - 1, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
-        conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)', ('undo', item_id, 1, _utc_now(), session_id))
+        conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)', ('undo', item_id, 1, _utc_now(), session_id, picker_name))
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
     qty_rem = remaining_qty(item)
@@ -866,15 +908,21 @@ async def undo_pick(request: Request, item_id: int, show_picked: int = 0, show_m
 
 
 @app.post('/items/{item_id}/missing', response_class=HTMLResponse)
-async def mark_missing(request: Request, item_id: int, note: str = Form(''), show_picked: int = 0, show_missing: int = 0, show_all: int = 0, auth=Depends(require_auth)):
+async def mark_missing(request: Request, item_id: int, note: str = Form(''), show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = Form('anonymous'), auth=Depends(require_auth)):
     session_id = request.session.get('sid')
+    picker_name = (picker_name or 'anonymous').strip() or 'anonymous'
     with get_conn() as conn:
         conn.execute('UPDATE batch_items SET is_missing = 1, missing_note = ?, updated_at = ? WHERE id = ?', (note, _utc_now(), item_id))
-        conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)', ('missing', item_id, 0, _utc_now(), session_id))
+        conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)', ('missing', item_id, 0, _utc_now(), session_id, picker_name))
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
     qty_rem = remaining_qty(item)
     if not show_all:
+        # Hide missing items in default view (not show_missing mode)
+        if not show_missing and item['is_missing']:
+            resp = HTMLResponse('')
+            resp.headers['HX-Trigger'] = 'batch-counts-changed'
+            return resp
         if not show_picked and qty_rem == 0:
             resp = HTMLResponse('')
             resp.headers['HX-Trigger'] = 'batch-counts-changed'
@@ -889,11 +937,12 @@ async def mark_missing(request: Request, item_id: int, note: str = Form(''), sho
 
 
 @app.post('/items/{item_id}/unmissing', response_class=HTMLResponse)
-async def unmark_missing(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, auth=Depends(require_auth)):
+async def unmark_missing(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = 'anonymous', auth=Depends(require_auth)):
     session_id = request.session.get('sid')
+    picker_name = (picker_name or 'anonymous').strip() or 'anonymous'
     with get_conn() as conn:
         conn.execute('UPDATE batch_items SET is_missing = 0, missing_note = NULL, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
-        conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id) VALUES (?, ?, ?, ?, ?)', ('unmissing', item_id, 0, _utc_now(), session_id))
+        conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)', ('unmissing', item_id, 0, _utc_now(), session_id, picker_name))
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
     qty_rem = remaining_qty(item)
@@ -987,20 +1036,22 @@ def card_modal(request: Request, item_id: int, auth=Depends(require_auth)):
 
 @app.get('/card/image/{card_id}')
 def card_image(card_id: str, size: str = 'normal', auth=Depends(require_auth)):
+    _img_headers = {'Cache-Control': 'public, max-age=86400'}
     path = Path('data/cache/images') / f"{card_id}_{size}.jpg"
     if path.exists():
-        return FileResponse(str(path))
+        return FileResponse(str(path), headers=_img_headers)
     with get_conn() as conn:
         card = scryfall.fetch_card_by_id(conn, card_id)
         if card:
             scryfall.ensure_image_cached(card, size=size)
     if path.exists():
-        return FileResponse(str(path))
+        return FileResponse(str(path), headers=_img_headers)
     raise HTTPException(status_code=404)
 
 
 @app.get('/api/items/{item_id}/image')
 def item_image(item_id: int, size: str = 'large', auth=Depends(require_auth)):
+    _img_headers = {'Cache-Control': 'public, max-age=86400'}
     with get_conn() as conn:
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
         if not item:
@@ -1010,8 +1061,55 @@ def item_image(item_id: int, size: str = 'large', auth=Depends(require_auth)):
         if card:
             path = scryfall.ensure_image_cached(card, size=size)
             if path and path.exists():
-                return FileResponse(str(path))
+                return FileResponse(str(path), headers=_img_headers)
     raise HTTPException(status_code=404)
+
+
+@app.post('/api/session/name')
+async def set_session_name(request: Request, name: str = Form(...), auth=Depends(require_auth)):
+    """Store a display name for this session so the scoreboard can show it."""
+    session_id = request.session.get('sid') or str(uuid.uuid4())
+    request.session['sid'] = session_id
+    clean_name = (name or '').strip()[:80]
+    if clean_name:
+        _session_names[session_id] = clean_name
+        with get_conn() as conn:
+            conn.execute(
+                'INSERT OR REPLACE INTO session_names (session_id, display_name, updated_at) VALUES (?, ?, ?)',
+                (session_id, clean_name, _utc_now()),
+            )
+            conn.commit()
+    return JSONResponse({'ok': True})
+
+
+@app.get('/batch/{batch_id}/scoreboard', response_class=HTMLResponse)
+def batch_scoreboard(request: Request, batch_id: int, auth=Depends(require_auth)):
+    with get_conn() as conn:
+        batch = conn.execute('SELECT id FROM batches WHERE id = ?', (batch_id,)).fetchone()
+        if not batch:
+            raise HTTPException(status_code=404)
+        rows = conn.execute(
+            '''SELECT e.user_session_id, SUM(e.qty) as total_picks
+               FROM events e
+               JOIN batch_items bi ON e.batch_item_id = bi.id
+               WHERE bi.batch_id = ? AND e.type = \'pick\'
+               GROUP BY e.user_session_id
+               ORDER BY total_picks DESC''',
+            (batch_id,),
+        ).fetchall()
+    my_sid = request.session.get('sid')
+    scoreboard = []
+    for row in rows:
+        sid = row['user_session_id']
+        name = _session_names.get(sid) if sid else None
+        scoreboard.append({
+            'name': name or (sid[:8] + '…' if sid else 'Anonymous'),
+            'total_picks': row['total_picks'],
+            'is_me': sid == my_sid,
+        })
+    return TEMPLATES.TemplateResponse('partials/scoreboard.html', {
+        'request': request, 'scoreboard': scoreboard,
+    })
 
 
 @app.get('/cards/search', response_class=HTMLResponse)

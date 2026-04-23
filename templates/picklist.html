@@ -10,7 +10,12 @@
     <div id="batch-counts" class="header-counts" data-url="/batch/{{ batch.id }}/counts" hx-get="/batch/{{ batch.id }}/counts" hx-trigger="load">
       Loading...
     </div>
+    <div id="scoreboard" class="header-counts scoreboard-panel" onclick="this.classList.toggle('scoreboard-open')">
+      <strong>Scoreboard</strong>
+      <div class="scoreboard-body" id="scoreboard-body"></div>
+    </div>
     <form id="filters" class="filters header-filters" hx-get="/batch/{{ batch.id }}/items" hx-target="#items" hx-trigger="change, keyup changed delay:400ms">
+      <input type="hidden" name="picker_name" id="picker-name-hidden" value="anonymous" />
       <label><input type="checkbox" name="show_picked" value="1" /> Show picked</label>
       <label><input type="checkbox" name="show_missing" value="1" /> Show missing only</label>
       <label><input type="checkbox" name="show_all" value="1" /> Show all</label>
@@ -34,7 +39,11 @@
 </div>
 
 <div id="items" class="panel" data-url="/batch/{{ batch.id }}/items" data-batch-id="{{ batch.id }}" hx-get="/batch/{{ batch.id }}/items" hx-trigger="load">
-  Loading...
+  <div style="padding: 16px;">
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+  </div>
 </div>
 
 <div id="card-modal"></div>

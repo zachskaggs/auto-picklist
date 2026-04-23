@@ -3,7 +3,10 @@
   {% set qty_remaining = item.qty_remaining %}
   {% include "partials/item_row.html" %}
 {% else %}
-  <div class="item-row">No items</div>
+  <div class="empty-state">
+    <div class="empty-state-icon">&#127183;</div>
+    <div>No cards to show</div>
+  </div>
 {% endfor %}
 {% else %}
 {% set ns = namespace(current_set=None) %}
@@ -22,8 +25,8 @@
         <div class="set-actions">
           {% if item.reserved_by %}<span class="reserve-badge">Reserved by {{ item.reserved_by }}</span>{% endif %}
           <button class="reserve-btn" onclick="reserveSet('{{ item.set_code }}')">Reserve set</button>
-          <button class="collapse-btn" type="button" onclick="toggleSetGroup('{{ item.set_code }}')">
-            <span class="caret">▾</span>
+          <button class="collapse-btn" type="button" onclick="toggleSetGroup('{{ item.set_code }}')" aria-expanded="true" aria-label="Toggle {{ item.set_code|upper }} section">
+            <span class="caret">&#9662;</span>
           </button>
         </div>
       </div>
@@ -33,7 +36,10 @@
   {% include "partials/item_row.html" %}
   {% set ns.current_set = item.set_code %}
 {% else %}
-  <div class="item-row">No items</div>
+  <div class="empty-state">
+    <div class="empty-state-icon">&#127183;</div>
+    <div>No cards to show</div>
+  </div>
 {% endfor %}
 {% if ns.current_set is not none %}
     </div>

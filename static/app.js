@@ -1,10 +1,12 @@
-﻿function showToast(message, undoUrl, itemId) {
+/* ── Toast Notifications ──────────────────────────────── */
+function showToast(message, undoUrl, itemId) {
   const toast = document.getElementById('toast');
   const msg = document.getElementById('toast-msg');
   const btn = document.getElementById('toast-undo');
   const countdown = document.getElementById('toast-count');
   let remaining = 5;
   msg.textContent = message;
+  toast.classList.remove('hiding');
   toast.classList.add('show');
   countdown.textContent = remaining;
   const timer = setInterval(() => {
@@ -12,7 +14,7 @@
     countdown.textContent = remaining;
     if (remaining <= 0) {
       clearInterval(timer);
-      toast.classList.remove('show');
+      hideToast();
     }
   }, 1000);
 
@@ -21,8 +23,10 @@
     const form = document.getElementById('filters');
     const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
     const url = params ? `${undoUrl}?${params}` : undoUrl;
-    fetch(url, { method: 'POST' }).then(() => {
-      toast.classList.remove('show');
+    const undoBody = new URLSearchParams();
+    undoBody.set('picker_name', getUserName());
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: undoBody.toString() }).then(() => {
+      hideToast();
       htmx.trigger(document.body, 'batch-counts-changed');
       if (itemId) { refreshItem(itemId); }
       htmx.trigger(document.body, 'refresh-items');
@@ -30,18 +34,74 @@
   };
 }
 
+function hideToast() {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.classList.add('hiding');
+  toast.addEventListener('animationend', () => {
+    toast.classList.remove('show', 'hiding');
+  }, { once: true });
+}
+
+/* ── High Contrast ────────────────────────────────────── */
 function toggleContrast() {
   document.body.classList.toggle('high-contrast');
 }
 
+/* ── Mark Missing Modal ───────────────────────────────── */
 function markMissing(itemId) {
-  const note = prompt('Missing note (optional):', '');
-  if (note === null) {
-    // User canceled; do not mark missing.
+  const overlay = document.getElementById('missing-modal-overlay');
+  const input = document.getElementById('missing-note-input');
+  const confirmBtn = document.getElementById('missing-confirm-btn');
+  const cancelBtn = document.getElementById('missing-cancel-btn');
+
+  if (!overlay || !input || !confirmBtn || !cancelBtn) {
+    // Fallback to prompt if modal not in DOM
+    const note = prompt('Missing note (optional):', '');
+    if (note === null) return;
+    submitMissing(itemId, note);
     return;
   }
+
+  input.value = '';
+  overlay.style.display = 'flex';
+  input.focus();
+
+  const cleanup = () => {
+    overlay.style.display = 'none';
+    confirmBtn.onclick = null;
+    cancelBtn.onclick = null;
+    overlay.onclick = null;
+    input.onkeydown = null;
+  };
+
+  confirmBtn.onclick = () => {
+    cleanup();
+    submitMissing(itemId, input.value);
+  };
+
+  cancelBtn.onclick = () => {
+    cleanup();
+  };
+
+  overlay.onclick = (e) => {
+    if (e.target === overlay) cleanup();
+  };
+
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      cleanup();
+      submitMissing(itemId, input.value);
+    } else if (e.key === 'Escape') {
+      cleanup();
+    }
+  };
+}
+
+function submitMissing(itemId, note) {
   const body = new URLSearchParams();
-  body.set('note', note);
+  body.set('note', note || '');
+  body.set('picker_name', getUserName());
   const form = document.getElementById('filters');
   const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
   const url = params ? `/items/${itemId}/missing?${params}` : `/items/${itemId}/missing`;
@@ -56,6 +116,7 @@ function markMissing(itemId) {
   });
 }
 
+/* ── Image Operations ─────────────────────────────────── */
 function toggleImageSize(imgId) {
   const img = document.getElementById(imgId);
   if (!img) return;
@@ -64,6 +125,7 @@ function toggleImageSize(imgId) {
   img.src = img.dataset.base + '?size=' + size;
 }
 
+/* ── Card Modal ───────────────────────────────────────── */
 function ensureCardModalTarget() {
   let container = document.getElementById('card-modal');
   if (!container) {
@@ -84,6 +146,9 @@ function closeCardModal() {
 document.addEventListener('keydown', (evt) => {
   if (evt.key === 'Escape') {
     closeCardModal();
+    // Also close missing modal
+    const missingOverlay = document.getElementById('missing-modal-overlay');
+    if (missingOverlay) missingOverlay.style.display = 'none';
   }
 });
 
@@ -101,17 +166,21 @@ function openCard(itemId) {
   htmx.ajax('GET', `/card/modal?item_id=${itemId}`, { target: container, swap: 'innerHTML' });
 }
 
+/* ── Picker Name ──────────────────────────────────────── */
 function getUserName() {
   const input = document.getElementById('user-name');
   if (!input) return 'anonymous';
   return input.value.trim() || 'anonymous';
 }
 
-function _syncPickerName(name) {
-  fetch('/api/set-name', {
+function syncUserName() {
+  const name = getUserName();
+  const body = new URLSearchParams();
+  body.set('name', name);
+  fetch('/api/session/name', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
   }).catch(() => {});
 }
 
@@ -120,14 +189,22 @@ function initUserName() {
   if (!input) return;
   const saved = localStorage.getItem('picker_name');
   input.value = saved || 'anonymous';
-  _syncPickerName(input.value.trim() || 'anonymous');
+  syncUserName();
   input.addEventListener('input', () => {
     const val = input.value.trim() || 'anonymous';
     localStorage.setItem('picker_name', val);
-    _syncPickerName(val);
+    syncPickerNameHidden();
   });
 }
 
+function syncPickerNameHidden() {
+  const hidden = document.getElementById('picker-name-hidden');
+  if (hidden) {
+    hidden.value = getUserName();
+  }
+}
+
+/* ── Set Management ───────────────────────────────────── */
 function reserveSet(setCode) {
   const items = document.getElementById('items');
   if (!items) return;
@@ -161,6 +238,11 @@ function toggleSetGroup(setCode) {
   const group = document.querySelector(`.set-group[data-set-code="${setCode}"]`);
   if (!group) return;
   group.classList.toggle('collapsed');
+  // Update aria-expanded
+  const btn = group.querySelector('.collapse-btn');
+  if (btn) {
+    btn.setAttribute('aria-expanded', !group.classList.contains('collapsed'));
+  }
   const key = `set_collapsed_${setCode || 'unknown'}`;
   localStorage.setItem(key, group.classList.contains('collapsed') ? '1' : '0');
 }
@@ -169,10 +251,16 @@ function applySetCollapseState(root = document) {
   root.querySelectorAll('.set-group').forEach((group) => {
     const setCode = group.dataset.setCode || 'unknown';
     const key = `set_collapsed_${setCode}`;
-    if (localStorage.getItem(key) === '1') {
+    const collapsed = localStorage.getItem(key) === '1';
+    if (collapsed) {
       group.classList.add('collapsed');
     } else {
       group.classList.remove('collapsed');
+    }
+    // Set aria-expanded on collapse buttons
+    const btn = group.querySelector('.collapse-btn');
+    if (btn) {
+      btn.setAttribute('aria-expanded', !collapsed);
     }
   });
 }
@@ -186,13 +274,13 @@ function pruneEmptySetGroups(root = document) {
   });
 }
 
+/* ── Item Refresh ─────────────────────────────────────── */
 function refreshItem(itemId) {
   const items = document.getElementById('items');
   const form = document.getElementById('filters');
   const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
   const url = `/items/${itemId}/row${params ? `?${params}` : ''}`;
   fetch(url).then(async (resp) => {
-    // Re-read the row after the response to avoid races with concurrent updates.
     let row = document.getElementById(`item-${itemId}`);
     if (resp.status === 204) {
       if (row && row.parentNode) row.remove();
@@ -207,15 +295,18 @@ function refreshItem(itemId) {
       const updated = document.getElementById(`item-${itemId}`);
       if (updated) {
         htmx.process(updated);
+        // Flash green on pick
+        updated.classList.add('just-picked');
+        setTimeout(() => updated.classList.remove('just-picked'), 800);
       }
       pruneEmptySetGroups(document);
     } else if (items && !document.getElementById(`item-${itemId}`)) {
-      // If the row is missing, refresh the full list to preserve sort order.
       htmx.trigger(document.body, 'refresh-items');
     }
   });
 }
 
+/* ── Realtime WebSocket ───────────────────────────────── */
 function initRealtime() {
   const items = document.getElementById('items');
   if (!items) return;
@@ -252,6 +343,7 @@ function initRealtime() {
   connect();
 }
 
+/* ── ManaPool ─────────────────────────────────────────── */
 function generateManaPoolPicklist() {
   const btn = document.getElementById('mp-generate-btn');
   const status = document.getElementById('mp-status');
@@ -299,10 +391,42 @@ function generateManaPoolPicklist() {
     });
 }
 
+/* ── Assisted Pick ────────────────────────────────────── */
 function assistedModeLabel(mode) {
   if (mode === 'bottom_up') return 'Bottom up';
   if (mode === 'middle_out') return 'Middle out';
   return 'Top down';
+}
+
+const _ENGLISH_LANGS = new Set(['en', 'english']);
+
+function _isNonEnglish(lang) {
+  return lang && !_ENGLISH_LANGS.has(lang.toLowerCase());
+}
+
+function _loadAssistedImage(img, url, noImage, attempt) {
+  attempt = attempt || 0;
+  img.onerror = () => {
+    img.onerror = null;
+    if (attempt < 2) {
+      setTimeout(() => _loadAssistedImage(img, url, noImage, attempt + 1), Math.pow(2, attempt) * 600);
+    } else {
+      img.style.display = 'none';
+      noImage.textContent = 'Image failed — tap to retry';
+      noImage.style.cursor = 'pointer';
+      noImage.onclick = () => {
+        noImage.onclick = null;
+        noImage.textContent = 'Retrying…';
+        noImage.style.cursor = '';
+        _loadAssistedImage(img, url, noImage, 0);
+      };
+      noImage.style.display = 'block';
+    }
+  };
+  const sep = url.includes('?') ? '&' : '?';
+  img.src = attempt > 0 ? `${url}${sep}t=${Date.now()}` : url;
+  img.style.display = 'block';
+  noImage.style.display = 'none';
 }
 
 function renderAssistedSnapshot(data) {
@@ -315,12 +439,25 @@ function renderAssistedSnapshot(data) {
     layout.classList.remove('assisted-high-value');
     layout.style.display = 'none';
     done.style.display = 'block';
+    const nextSection = document.getElementById('assisted-next-preview');
+    if (nextSection) nextSection.style.display = 'none';
     return;
   }
 
   done.style.display = 'none';
   layout.style.display = 'grid';
   assistedCurrentItemId = data.item.id;
+
+  // Card swap animation
+  const detailPane = document.querySelector('.assisted-detail-pane');
+  if (detailPane) {
+    detailPane.classList.remove('assisted-card-enter');
+    void detailPane.offsetWidth; // force reflow
+    detailPane.classList.add('assisted-card-enter');
+    detailPane.addEventListener('animationend', () => {
+      detailPane.classList.remove('assisted-card-enter');
+    }, { once: true });
+  }
 
   const modeLabel = document.getElementById('assisted-mode-label');
   const progress = document.getElementById('assisted-progress');
@@ -334,6 +471,7 @@ function renderAssistedSnapshot(data) {
   const image = document.getElementById('assisted-card-image');
   const noImage = document.getElementById('assisted-no-image');
   const pickAll = document.getElementById('assisted-pick-all-btn');
+  const langAlert = document.getElementById('assisted-lang-alert');
 
   modeLabel.textContent = `Mode: ${assistedModeLabel(data.mode)}`;
   progress.textContent = `${data.remaining_cards} cards left | ${data.remaining_copies} copies left`;
@@ -356,21 +494,65 @@ function renderAssistedSnapshot(data) {
   }
 
   qty.textContent = `Remaining ${data.item.qty_remaining} of ${data.item.qty_required}`;
-  pickAll.style.display = data.item.qty_remaining > 1 ? 'block' : 'none';
+  qty.classList.toggle('assisted-qty-multi', data.item.qty_required > 1);
+  const showPickAll = data.item.qty_remaining > 1;
+  pickAll.style.visibility = showPickAll ? 'visible' : 'hidden';
+  pickAll.disabled = !showPickAll;
   layout.classList.toggle('assisted-high-value', typeof data.item.purchase_price === 'number' && data.item.purchase_price > 5);
 
+  // Non-English alert banner
+  if (langAlert) {
+    if (_isNonEnglish(data.item.language)) {
+      langAlert.textContent = `\u26A0 Non-English: ${data.item.language}`;
+      langAlert.style.display = 'block';
+      layout.classList.add('assisted-lang-border');
+    } else {
+      langAlert.style.display = 'none';
+      layout.classList.remove('assisted-lang-border');
+    }
+  }
+
+  // Image loading with retry
   if (data.item.image_url) {
-    image.onerror = () => {
-      image.style.display = 'none';
-      noImage.style.display = 'block';
-    };
-    image.src = data.item.image_url;
-    image.style.display = 'block';
-    noImage.style.display = 'none';
+    _loadAssistedImage(image, data.item.image_url, noImage, 0);
   } else {
     image.removeAttribute('src');
     image.style.display = 'none';
+    noImage.textContent = 'No image available';
+    noImage.style.cursor = '';
+    noImage.onclick = null;
     noImage.style.display = 'block';
+  }
+
+  // Coming Next preview (visibility-based to prevent layout shift)
+  const nextSection = document.getElementById('assisted-next-preview');
+  if (nextSection) {
+    if (data.next_item) {
+      const nextName = document.getElementById('assisted-next-name');
+      const nextSet = document.getElementById('assisted-next-set');
+      const nextImg = document.getElementById('assisted-next-image');
+      const nextNoImg = document.getElementById('assisted-next-no-image');
+      nextName.textContent = data.next_item.card_name || '';
+      nextSet.textContent = [data.next_item.set_code, data.next_item.collector_number].filter(Boolean).join(' #');
+      if (data.next_item.image_url) {
+        nextImg.onerror = () => { nextImg.style.display = 'none'; nextNoImg.style.display = 'block'; };
+        nextImg.src = data.next_item.image_url;
+        nextImg.style.display = 'block';
+        nextNoImg.style.display = 'none';
+      } else {
+        nextImg.removeAttribute('src');
+        nextImg.style.display = 'none';
+        nextNoImg.style.display = 'block';
+      }
+      // Preload next image
+      if (data.next_item.image_url) {
+        const preload = new Image();
+        preload.src = data.next_item.image_url;
+      }
+      nextSection.style.visibility = 'visible';
+    } else {
+      nextSection.style.visibility = 'hidden';
+    }
   }
 }
 
@@ -412,6 +594,7 @@ function assistedPerformAction(action) {
     assistedSkippedItemIds.delete(assistedCurrentItemId);
   }
   body.set('exclude_item_ids', Array.from(assistedSkippedItemIds).join(','));
+  body.set('picker_name', getUserName());
   assistedSetButtonsDisabled(true);
   fetch(root.dataset.actionUrl, {
     method: 'POST',
@@ -429,14 +612,46 @@ function assistedPerformAction(action) {
     .finally(() => assistedSetButtonsDisabled(false));
 }
 
+/* ── Scoreboard ───────────────────────────────────────── */
+function loadScoreboard() {
+  const el = document.getElementById('scoreboard-body');
+  if (!el) return;
+  const items = document.getElementById('items');
+  const root = document.getElementById('assisted-pick-root');
+  const batchId = items ? items.dataset.batchId : (root ? root.dataset.batchId : null);
+  if (!batchId) return;
+  fetch(`/api/batch/${batchId}/scoreboard`)
+    .then((resp) => resp.json())
+    .then((data) => {
+      const body = document.getElementById('scoreboard-body');
+      if (!body) return;
+      if (!data.length) {
+        body.innerHTML = '<div class="scoreboard-empty">No picks yet</div>';
+        return;
+      }
+      body.innerHTML = data
+        .map((p, i) => {
+          const rank = i + 1;
+          return `<div class="scoreboard-entry"><span class="scoreboard-rank">#${rank}</span> <span class="scoreboard-name">${p.picker_name}</span> <span class="scoreboard-score">${p.picks} picks</span></div>`;
+        })
+        .join('');
+    })
+    .catch(() => {});
+}
+
+/* ── Assisted Pick Init ───────────────────────────────── */
 function initAssistedPick() {
   const root = document.getElementById('assisted-pick-root');
   if (!root) return;
   const chooser = document.getElementById('assisted-mode-chooser');
   if (chooser) chooser.style.display = 'block';
+  loadScoreboard();
+  setInterval(loadScoreboard, 15000);
 }
 
+/* ── Scroll Header Hide ──────────────────────────────── */
 let scrollTicking = false;
+let lastScrollY = 0;
 window.addEventListener('scroll', () => {
   if (scrollTicking) return;
   scrollTicking = true;
@@ -447,15 +662,51 @@ window.addEventListener('scroll', () => {
       return;
     }
     const current = window.scrollY;
-    if (current > 80) {
-      header.classList.add('header-compact');
+    if (current > 60 && current > lastScrollY) {
+      header.classList.add('header-hidden');
     } else {
-      header.classList.remove('header-compact');
+      header.classList.remove('header-hidden');
     }
+    lastScrollY = current;
     scrollTicking = false;
   });
 });
 
+/* ── HTMX Progress Bar ───────────────────────────────── */
+let htmxActiveRequests = 0;
+
+function showHtmxProgress() {
+  let bar = document.getElementById('htmx-progress');
+  if (!bar) return;
+  bar.style.width = '0%';
+  bar.style.display = 'block';
+  // Animate to 70% quickly
+  requestAnimationFrame(() => {
+    bar.style.width = '70%';
+  });
+}
+
+function hideHtmxProgress() {
+  let bar = document.getElementById('htmx-progress');
+  if (!bar) return;
+  bar.style.width = '100%';
+  setTimeout(() => {
+    bar.style.display = 'none';
+    bar.style.width = '0%';
+  }, 300);
+}
+
+document.body.addEventListener('htmx:beforeRequest', () => {
+  htmxActiveRequests++;
+  if (htmxActiveRequests === 1) showHtmxProgress();
+});
+
+document.body.addEventListener('htmx:afterRequest', () => {
+  htmxActiveRequests = Math.max(0, htmxActiveRequests - 1);
+  if (htmxActiveRequests === 0) hideHtmxProgress();
+});
+
+/* ── HTMX Events ─────────────────────────────────────── */
 htmx.on('batch-counts-changed', () => {
   const el = document.getElementById('batch-counts');
   if (!el) return;
@@ -466,6 +717,7 @@ htmx.on('batch-counts-changed', () => {
       if (!current) return;
       current.innerHTML = html;
     });
+  loadScoreboard();
 });
 
 htmx.on('refresh-items', () => {
@@ -488,6 +740,7 @@ htmx.on('refresh-items', () => {
     });
 });
 
+/* ── HTMX Swap Error Recovery ─────────────────────────── */
 document.body.addEventListener('htmx:swapError', (evt) => {
   const detail = evt.detail || {};
   const target = detail.target;
@@ -504,7 +757,6 @@ document.body.addEventListener('htmx:swapError', (evt) => {
     return;
   }
 
-  // If the items target was detached mid-swap, refresh the list to recover.
   if (targetMissing && (targetId === 'items' || responseUrl.includes('/batch/'))) {
     htmx.trigger(document.body, 'refresh-items');
     return;
@@ -515,30 +767,12 @@ document.body.addEventListener('htmx:swapError', (evt) => {
   }
 });
 
+/* ── Init ─────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initUserName();
+  syncPickerNameHidden();
   initRealtime();
   applySetCollapseState();
   initAssistedPick();
+  loadScoreboard();
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -5,9 +5,15 @@
   <div><a class="btn secondary" href="/">Back</a></div>
 </div>
 <div class="panel" style="padding: 16px;">
-  <form method="post" action="/batch/new" style="display:grid; gap:12px; max-width: 500px;">
-    <input class="input" name="name" placeholder="Batch name" />
-    <input class="input" name="source" placeholder="Source (TCGPlayer/eBay/etc.)" />
+  <form method="post" action="/batch/new" class="form-grid">
+    <div class="form-group">
+      <label class="form-label" for="batch-name">Batch name</label>
+      <input class="input" id="batch-name" name="name" placeholder="e.g. Tuesday Pull" required />
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="batch-source">Source</label>
+      <input class="input" id="batch-source" name="source" placeholder="TCGPlayer / eBay / etc." />
+    </div>
     <button class="btn" type="submit">Create batch</button>
   </form>
 </div>

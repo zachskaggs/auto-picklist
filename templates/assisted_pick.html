@@ -2,10 +2,20 @@
 {% block content %}
 <div class="header">
   <div class="title">Assisted Pick: {{ batch.name }}</div>
-  <div class="header-actions">
-    <a class="btn secondary" href="/batch/{{ batch.id }}">Back to batch</a>
-    <a class="btn secondary" href="/">Batches</a>
+  <div class="header-right">
+    <div class="name-box">
+      <label class="name-label" for="user-name">Name</label>
+      <input id="user-name" class="input name-input" type="text" value="anonymous" />
+    </div>
+    <div class="header-actions">
+      <a class="btn secondary" href="/batch/{{ batch.id }}">Back to batch</a>
+      <a class="btn secondary" href="/">Batches</a>
+    </div>
   </div>
+</div>
+<div id="scoreboard" class="scoreboard-panel panel" onclick="this.classList.toggle('scoreboard-open')">
+  <strong>Scoreboard</strong>
+  <div class="scoreboard-body" id="scoreboard-body"></div>
 </div>
 
 <div
@@ -24,8 +34,9 @@
     </div>
   </div>
 
-  <div id="assisted-layout" class="assisted-layout panel" style="display:none;">
+  <div id="assisted-layout" class="assisted-layout panel-static" style="display:none;">
     <div class="assisted-image-pane">
+      <div id="assisted-lang-alert" class="lang-alert" style="display:none;"></div>
       <img id="assisted-card-image" class="assisted-card-image" alt="Card image" />
       <div id="assisted-no-image" class="assisted-no-image" style="display:none;">No image available</div>
     </div>
@@ -61,7 +72,19 @@
     </div>
   </div>
 
-  <div id="assisted-done" class="assisted-done panel" style="display:none;">
+  <div id="assisted-next-preview" class="assisted-next-preview panel-static" style="visibility:hidden;">
+    <div class="assisted-next-label">Coming Next</div>
+    <div class="assisted-next-content">
+      <img id="assisted-next-image" class="assisted-next-thumb" alt="Next card" />
+      <div id="assisted-next-no-image" class="assisted-next-no-image" style="display:none;">No image</div>
+      <div class="assisted-next-info">
+        <div id="assisted-next-name" class="assisted-next-name"></div>
+        <div id="assisted-next-set" class="assisted-next-set"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="assisted-done" class="assisted-done panel-static" style="display:none;">
     <div class="title">Batch complete</div>
     <div>All non-missing cards are fully picked.</div>
     <div class="header-actions" style="margin-top: 14px;">
