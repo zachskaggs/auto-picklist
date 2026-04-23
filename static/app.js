@@ -107,14 +107,24 @@ function getUserName() {
   return input.value.trim() || 'anonymous';
 }
 
+function _syncPickerName(name) {
+  fetch('/api/set-name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  }).catch(() => {});
+}
+
 function initUserName() {
   const input = document.getElementById('user-name');
   if (!input) return;
   const saved = localStorage.getItem('picker_name');
   input.value = saved || 'anonymous';
+  _syncPickerName(input.value.trim() || 'anonymous');
   input.addEventListener('input', () => {
     const val = input.value.trim() || 'anonymous';
     localStorage.setItem('picker_name', val);
+    _syncPickerName(val);
   });
 }
 
@@ -461,6 +471,7 @@ htmx.on('batch-counts-changed', () => {
 htmx.on('refresh-items', () => {
   const el = document.getElementById('items');
   if (!el) return;
+  const savedScroll = window.scrollY;
   const form = document.getElementById('filters');
   const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
   const url = params ? `${el.dataset.url}?${params}` : el.dataset.url;
@@ -473,6 +484,7 @@ htmx.on('refresh-items', () => {
       htmx.process(current);
       applySetCollapseState(current);
       pruneEmptySetGroups(current);
+      window.scrollTo({ top: savedScroll, behavior: 'instant' });
     });
 });
 

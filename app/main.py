@@ -198,6 +198,22 @@ async def ws_batch(websocket: WebSocket, batch_id: int):
         manager.disconnect(batch_id, websocket)
 
 
+@app.post('/api/set-name')
+async def set_picker_name(request: Request, auth=Depends(require_auth)):
+    body = await request.json()
+    name = (body.get('name') or '').strip() or 'anonymous'
+    session_id = request.session.get('sid') or str(uuid.uuid4())
+    request.session['sid'] = session_id
+    with get_conn() as conn:
+        conn.execute(
+            'INSERT INTO session_names (user_session_id, picker_name, updated_at) VALUES (?, ?, ?)'
+            ' ON CONFLICT(user_session_id) DO UPDATE SET picker_name=excluded.picker_name, updated_at=excluded.updated_at',
+            (session_id, name, _utc_now()),
+        )
+        conn.commit()
+    return JSONResponse({'ok': True})
+
+
 @app.get('/', response_class=HTMLResponse)
 def batches(request: Request, auth=Depends(require_auth)):
     with get_conn() as conn:
@@ -692,7 +708,26 @@ def batch_counts(request: Request, batch_id: int, auth=Depends(require_auth)):
             (batch_id,),
         ).fetchone()['c']
         missing = conn.execute('SELECT COUNT(*) AS c FROM batch_items WHERE batch_id = ? AND is_missing = 1', (batch_id,)).fetchone()['c']
-    return TEMPLATES.TemplateResponse('partials/counts.html', {'request': request, 'total': total, 'remaining': remaining, 'missing': missing})
+        per_user = conn.execute(
+            '''SELECT COALESCE(sn.picker_name, 'anonymous') AS name,
+                      SUM(CASE WHEN e.type = 'pick' THEN e.qty ELSE 0 END) -
+                      SUM(CASE WHEN e.type = 'undo' THEN e.qty ELSE 0 END) AS net_picks
+               FROM events e
+               JOIN batch_items bi ON bi.id = e.batch_item_id
+               LEFT JOIN session_names sn ON sn.user_session_id = e.user_session_id
+               WHERE bi.batch_id = ? AND e.type IN ('pick', 'undo')
+               GROUP BY e.user_session_id
+               HAVING net_picks > 0
+               ORDER BY net_picks DESC''',
+            (batch_id,),
+        ).fetchall()
+    return TEMPLATES.TemplateResponse('partials/counts.html', {
+        'request': request,
+        'total': total,
+        'remaining': remaining,
+        'missing': missing,
+        'per_user': [dict(r) for r in per_user],
+    })
 
 
 @app.get('/batch/{batch_id}/items', response_class=HTMLResponse)

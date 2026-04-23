@@ -3,3 +3,10 @@
   <span><strong>{{ missing }}</strong> missing</span>
   <span><strong>{{ total }}</strong> total cards</span>
 </div>
+{% if per_user %}
+<div class="counts-per-user">
+  {% for u in per_user %}
+    <span class="counts-user-badge">{{ u.name }}: <strong>{{ u.net_picks }}</strong></span>
+  {% endfor %}
+</div>
+{% endif %}

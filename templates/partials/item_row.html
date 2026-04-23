@@ -6,7 +6,7 @@
         {% if item.condition %}
           <span class="badge condition-{{ item.condition|lower }}">{{ item.condition }}</span>
         {% endif %}
-        {% if item.language %}<span class="badge badge-lang">{{ item.language }}</span>{% endif %}
+        {% if item.language %}<span class="badge {% if item.language|upper == 'EN' %}badge-lang{% else %}badge-lang-foreign{% endif %}">{{ item.language }}</span>{% endif %}
         {% if item.printing %}
           <span class="badge {% if item.printing|lower == 'foil' %}badge-foil{% else %}badge-printing{% endif %}">{{ item.printing }}</span>
         {% endif %}
@@ -26,14 +26,14 @@
   </div>
 
   <div class="qty-col">{{ qty_remaining }} of {{ item.qty_required }}</div>
-  <div>
+  <div class="row-action row-action-pick">
     {% if show_picked and qty_remaining == 0 %}
       <button class="action-btn undo" hx-post="/items/{{ item.id }}/undo" hx-target="this" hx-swap="none" hx-include="#filters" hx-on::after-request="refreshItem({{ item.id }})">Unpick</button>
     {% else %}
       <button class="action-btn pick" hx-post="/items/{{ item.id }}/pick" hx-target="this" hx-swap="none" hx-include="#filters" hx-on::after-request="refreshItem({{ item.id }})" onclick="showToast('Picked {{ item.card_name }}', '/items/{{ item.id }}/undo', {{ item.id }})">Picked</button>
     {% endif %}
   </div>
-  <div>
+  <div class="row-action row-action-missing">
     {% if item.is_missing %}
       <button class="action-btn" hx-post="/items/{{ item.id }}/unmissing" hx-target="this" hx-swap="none" hx-include="#filters" hx-on::after-request="refreshItem({{ item.id }})">Unmissing</button>
     {% else %}

@@ -28,7 +28,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
-  transition: transform 0.2s ease;
+  transition: padding 0.2s ease;
   gap: 12px;
 }
 
@@ -61,8 +61,17 @@ body {
   padding: 8px 10px;
 }
 
+.header-hideable {
+  overflow: hidden;
+  max-height: 200px;
+  opacity: 1;
+  transition: max-height 0.2s ease, opacity 0.15s ease;
+}
+
 .header-compact .header-hideable {
-  display: none;
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .title {
@@ -140,6 +149,21 @@ body {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+.counts-per-user {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.counts-user-badge {
+  background: #e8f0ff;
+  border-radius: 8px;
+  padding: 2px 8px;
+  color: #1f3f7a;
 }
 
 .input, select {
@@ -320,6 +344,7 @@ body {
 
 .badge-missing { background: #fee2e2; color: #991b1b; }
 .badge-lang { background: #e0f2fe; color: #075985; }
+.badge-lang-foreign { background: #fee2e2; color: #991b1b; font-weight: 700; }
 .badge-printing { background: #ede9fe; color: #5b21b6; }
 
 .badge-foil {
@@ -590,6 +615,49 @@ body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@media (max-width: 480px) {
+  .picklist-row {
+    grid-template-columns: auto 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 6px;
+  }
+  .picklist-row .item-main {
+    grid-column: 1 / 4;
+    grid-row: 1;
+  }
+  .picklist-row .qty-col {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 14px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+  }
+  .picklist-row .row-action-pick {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .picklist-row .row-action-missing {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  .picklist-row .action-btn {
+    width: 100%;
+    padding: 12px 4px;
+    font-size: 15px;
+  }
+  .name-input {
+    width: 100px;
+    font-size: 13px;
+    padding: 6px 8px;
+  }
+  .counts-inline {
+    flex-wrap: wrap;
+    font-size: 12px;
+    gap: 6px;
+  }
 }
 
 @media (max-width: 900px) {
