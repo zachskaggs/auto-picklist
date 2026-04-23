@@ -662,9 +662,10 @@ window.addEventListener('scroll', () => {
       return;
     }
     const current = window.scrollY;
-    if (current > 60 && current > lastScrollY) {
+    const isHidden = header.classList.contains('header-hidden');
+    if (!isHidden && current > 60 && current > lastScrollY) {
       header.classList.add('header-hidden');
-    } else {
+    } else if (isHidden && (current < 30 || lastScrollY - current > 10)) {
       header.classList.remove('header-hidden');
     }
     lastScrollY = current;

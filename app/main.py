@@ -848,7 +848,7 @@ async def reserve_set(request: Request, batch_id: int, set_code: str = Form(...)
     return JSONResponse({'ok': True, 'reserved_by': reserved_by})
 
 @app.post('/items/{item_id}/pick', response_class=HTMLResponse)
-async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = 'anonymous', auth=Depends(require_auth)):
+async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = Form('anonymous'), auth=Depends(require_auth)):
     session_id = request.session.get('sid') or str(uuid.uuid4())
     request.session['sid'] = session_id
     picker_name = (picker_name or 'anonymous').strip() or 'anonymous'
@@ -879,7 +879,7 @@ async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_m
 
 
 @app.post('/items/{item_id}/undo', response_class=HTMLResponse)
-async def undo_pick(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = 'anonymous', auth=Depends(require_auth)):
+async def undo_pick(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = Form('anonymous'), auth=Depends(require_auth)):
     session_id = request.session.get('sid')
     picker_name = (picker_name or 'anonymous').strip() or 'anonymous'
     with get_conn() as conn:
@@ -937,7 +937,7 @@ async def mark_missing(request: Request, item_id: int, note: str = Form(''), sho
 
 
 @app.post('/items/{item_id}/unmissing', response_class=HTMLResponse)
-async def unmark_missing(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = 'anonymous', auth=Depends(require_auth)):
+async def unmark_missing(request: Request, item_id: int, show_picked: int = 0, show_missing: int = 0, show_all: int = 0, picker_name: str = Form('anonymous'), auth=Depends(require_auth)):
     session_id = request.session.get('sid')
     picker_name = (picker_name or 'anonymous').strip() or 'anonymous'
     with get_conn() as conn:
