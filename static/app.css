@@ -105,9 +105,6 @@ body {
   padding: 6px var(--space-sm);
 }
 
-.header-hidden .header-hideable {
-  display: none;
-}
 
 .title {
   font-size: 18px;
