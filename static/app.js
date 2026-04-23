@@ -723,6 +723,7 @@ htmx.on('batch-counts-changed', () => {
 htmx.on('refresh-items', () => {
   const el = document.getElementById('items');
   if (!el) return;
+  const savedScroll = window.scrollY;
   const form = document.getElementById('filters');
   const params = form ? new URLSearchParams(new FormData(form)).toString() : '';
   const url = params ? `${el.dataset.url}?${params}` : el.dataset.url;
@@ -735,6 +736,7 @@ htmx.on('refresh-items', () => {
       htmx.process(current);
       applySetCollapseState(current);
       pruneEmptySetGroups(current);
+      window.scrollTo({ top: savedScroll, behavior: 'instant' });
     });
 });
 
