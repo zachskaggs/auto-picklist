@@ -21,10 +21,19 @@
       <label><input type="checkbox" name="show_all" value="1" /> Show all</label>
       <label>Sort
         <select name="sort_by">
-          <option value="set">Set</option>
+          <option value="set">Set A→Z</option>
+          <option value="set_desc">Set Z→A</option>
           <option value="value">Card value</option>
         </select>
       </label>
+      {% if available_sets %}
+      <div class="set-filter-row">
+        <span class="set-filter-label">Sets</span>
+        {% for code in available_sets %}
+        <label class="set-chip"><input type="checkbox" name="set_filter" value="{{ code }}" /><span>{{ code|upper }}</span></label>
+        {% endfor %}
+      </div>
+      {% endif %}
     </form>
     <div class="header-actions header-hideable">
       <a class="btn" href="/batch/{{ batch.id }}/assisted-pick">Assisted pick</a>

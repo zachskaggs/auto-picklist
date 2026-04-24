@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from fastapi import FastAPI, Request, Form, UploadFile, File, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, Form, Query, UploadFile, File, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -442,6 +442,10 @@ def picklist(request: Request, batch_id: int, auth=Depends(require_auth)):
         batch = conn.execute('SELECT * FROM batches WHERE id = ?', (batch_id,)).fetchone()
         if not batch:
             raise HTTPException(status_code=404)
+        set_rows = conn.execute(
+            'SELECT DISTINCT set_code FROM batch_items WHERE batch_id = ? AND set_code IS NOT NULL ORDER BY set_code',
+            (batch_id,),
+        ).fetchall()
     batch_data = dict(batch)
     source_orders = []
     if batch_data.get('source_payload'):
@@ -450,7 +454,8 @@ def picklist(request: Request, batch_id: int, auth=Depends(require_auth)):
             source_orders = payload.get('order_ids', [])
         except Exception:
             source_orders = []
-    return TEMPLATES.TemplateResponse('picklist.html', {'request': request, 'batch': batch, 'source_orders': source_orders})
+    available_sets = [r['set_code'] for r in set_rows]
+    return TEMPLATES.TemplateResponse('picklist.html', {'request': request, 'batch': batch, 'source_orders': source_orders, 'available_sets': available_sets})
 
 
 @app.get('/batch/{batch_id}/assisted-pick', response_class=HTMLResponse)
@@ -767,7 +772,7 @@ def batch_scoreboard(batch_id: int, auth=Depends(require_auth)):
 
 
 @app.get('/batch/{batch_id}/items', response_class=HTMLResponse)
-def batch_items(request: Request, batch_id: int, game: str = '', q: str = '', show_picked: int = 0, show_missing: int = 0, show_all: int = 0, sort_by: str = 'set', auth=Depends(require_auth)):
+def batch_items(request: Request, batch_id: int, game: str = '', q: str = '', show_picked: int = 0, show_missing: int = 0, show_all: int = 0, sort_by: str = 'set', set_filter: list[str] = Query(default=[]), auth=Depends(require_auth)):
     with get_conn() as conn:
         order_ids = []
         batch = conn.execute('SELECT source_payload FROM batches WHERE id = ?', (batch_id,)).fetchone()
@@ -797,10 +802,15 @@ def batch_items(request: Request, batch_id: int, game: str = '', q: str = '', sh
                 where.append('is_missing = 0')
         sql = f"SELECT * FROM batch_items WHERE {' AND '.join(where)}"
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+        if set_filter:
+            allowed = {s.upper() for s in set_filter}
+            rows = [r for r in rows if (r.get('set_code') or '').upper() in allowed]
         reservations = _reservation_map(conn, batch_id)
         set_names = _set_name_map(conn, [r['scryfall_id'] for r in rows if r.get('scryfall_id')])
-    sort_mode = 'value' if (sort_by or '').lower() == 'value' else 'set'
-    rows = sort_items(rows, sort_by=sort_mode)
+    sort_key = (sort_by or '').lower()
+    sort_mode = 'value' if sort_key == 'value' else 'set'
+    reverse_sets = sort_key == 'set_desc'
+    rows = sort_items(rows, sort_by=sort_mode, reverse_sets=reverse_sets)
     for r in rows:
         r['qty_remaining'] = remaining_qty(r)
         r['reserved_by'] = reservations.get(r['set_code'])

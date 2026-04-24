@@ -231,6 +231,64 @@ body {
   color: var(--text);
 }
 
+.set-filter-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.set-filter-label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.set-chip {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.set-chip input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.set-chip span {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  user-select: none;
+}
+
+.set-chip input:checked + span {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.set-chip:hover span {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.set-chip input:checked + span:hover {
+  color: #fff;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
