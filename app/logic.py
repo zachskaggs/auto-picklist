@@ -10,7 +10,7 @@ def game_sort_key(game):
     return (1, game)
 
 
-def sort_items(items, sort_by='set'):
+def sort_items(items, sort_by='set', reverse_sets=False):
     if (sort_by or '').lower() == 'value':
         def _value_key(r):
             price = r.get('purchase_price')
@@ -27,7 +27,13 @@ def sort_items(items, sort_by='set'):
         set_code = (r.get('set_code') or '').strip()
         set_missing = 1 if not set_code else 0
         return (game_sort_key(r.get('game')), set_missing, set_code, r.get('card_name') or '')
-    return sorted(items, key=_key)
+    sorted_items = sorted(items, key=_key)
+    if reverse_sets:
+        from itertools import groupby
+        grouped = [(k, list(v)) for k, v in groupby(sorted_items, key=lambda r: (game_sort_key(r.get('game')), r.get('set_code') or ''))]
+        grouped.reverse()
+        return [item for _, group in grouped for item in group]
+    return sorted_items
 
 
 def remaining_qty(item):
