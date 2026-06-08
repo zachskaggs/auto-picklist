@@ -552,9 +552,13 @@ def cardkingdom_report(request: Request, min_ratio: float = None, sort: str = 'v
     if min_ratio is None:
         min_ratio = CK_BUYLIST_MIN_RATIO
     sort_by = 'ratio' if (sort or '').lower() == 'ratio' else 'value'
-    rows = _ck_report_rows(min_ratio, sort_by, min_price=min_price)
+    all_rows = _ck_report_rows(min_ratio, sort_by, min_price=min_price)
+    # The ratio threshold FILTERS the list (not just highlights): only show cards
+    # CardKingdom pays at least the chosen fraction of your ManaPool price for.
+    rows = [r for r in all_rows if r['meets']]
     total_value = round(sum(r['value'] for r in rows), 2)
-    meets_value = round(sum(r['value'] for r in rows if r['meets']), 2)
+    ratios = [r['ratio'] for r in rows if r['ratio'] is not None]
+    avg_ratio = round(sum(ratios) / len(ratios), 4) if ratios else None
     return TEMPLATES.TemplateResponse('partials/ck_report.html', {
         'request': request,
         'rows': rows,
@@ -562,19 +566,19 @@ def cardkingdom_report(request: Request, min_ratio: float = None, sort: str = 'v
         'min_price': min_price,
         'sort_by': sort_by,
         'total_value': total_value,
-        'meets_value': meets_value,
-        'meets_count': sum(1 for r in rows if r['meets']),
+        'avg_ratio': avg_ratio,
+        'shown_count': len(rows),
+        'excluded_count': len(all_rows) - len(rows),
     })
 
 
 @app.post('/api/cardkingdom/create-batch')
-def cardkingdom_create_batch(request: Request, min_ratio: float = Form(None), sort: str = Form('value'), min_price: float = Form(0.0), only_meets: int = Form(0), auth=Depends(require_auth)):
+def cardkingdom_create_batch(request: Request, min_ratio: float = Form(None), sort: str = Form('value'), min_price: float = Form(0.0), auth=Depends(require_auth)):
     if min_ratio is None:
         min_ratio = CK_BUYLIST_MIN_RATIO
     sort_by = 'ratio' if (sort or '').lower() == 'ratio' else 'value'
-    rows = _ck_report_rows(min_ratio, sort_by, min_price=min_price)
-    if only_meets:
-        rows = [r for r in rows if r['meets']]
+    # Send exactly what the filtered list shows (cards at/above the threshold).
+    rows = [r for r in _ck_report_rows(min_ratio, sort_by, min_price=min_price) if r['meets']]
     if not rows:
         raise HTTPException(status_code=400, detail='No matching cards to send to a batch. Refresh data or relax the filters.')
 
@@ -584,7 +588,6 @@ def cardkingdom_create_batch(request: Request, min_ratio: float = Form(None), so
         'min_ratio': min_ratio,
         'min_price': min_price,
         'sort_by': sort_by,
-        'only_meets': bool(only_meets),
         'rows': len(rows),
         'total_value': round(sum(r['value'] for r in rows), 2),
     }
