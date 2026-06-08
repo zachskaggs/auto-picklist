@@ -21,8 +21,10 @@ _THREAD_LOCAL = threading.local()
 # (400 bad_request / subcode "generic_user_agent"), and asks clients to send an
 # Accept header. A missing User-Agent here breaks both card lookups and image
 # downloads. Send an identifying User-Agent + Accept on every Scryfall request.
-USER_AGENT = os.getenv('SCRYFALL_USER_AGENT', 'auto-picklist/1.0 (+https://manapool.com)')
-ACCEPT = os.getenv('SCRYFALL_ACCEPT', 'application/json;q=0.9,image/*;q=0.8,*/*;q=0.5')
+# Use `or` (not getenv default) so an explicitly-empty env value still falls back
+# to a valid User-Agent; an empty UA would make Scryfall reject every request.
+USER_AGENT = os.getenv('SCRYFALL_USER_AGENT') or 'auto-picklist/1.0 (+https://manapool.com)'
+ACCEPT = os.getenv('SCRYFALL_ACCEPT') or 'application/json;q=0.9,image/*;q=0.8,*/*;q=0.5'
 
 
 def _http():

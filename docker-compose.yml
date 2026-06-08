@@ -20,4 +20,9 @@ services:
       SCRYFALL_BASE_URL: ${SCRYFALL_BASE_URL:-https://api.scryfall.com}
       SCRYFALL_IMAGE_SIZE: ${SCRYFALL_IMAGE_SIZE:-normal}
       SCRYFALL_MAX_WORKERS: ${SCRYFALL_MAX_WORKERS:-8}
+      SCRYFALL_USER_AGENT: ${SCRYFALL_USER_AGENT:-auto-picklist/1.0 (+https://manapool.com)}
+      CARDKINGDOM_BASE_URL: ${CARDKINGDOM_BASE_URL:-https://api.cardkingdom.com}
+      CK_BUYLIST_MIN_RATIO: ${CK_BUYLIST_MIN_RATIO:-0.75}
+      # 0 = dry-run (log only); 1 = picking a CardKingdom batch delists on ManaPool.
+      MANAPOOL_INVENTORY_WRITE: ${MANAPOOL_INVENTORY_WRITE:-0}
       LOAD_DOTENV: ${LOAD_DOTENV:-0}
