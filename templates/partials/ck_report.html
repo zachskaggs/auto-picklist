@@ -1,0 +1,52 @@
+<div class="ck-summary" style="margin:10px 0;">
+  <span class="badge">{{ rows|length }} matched listings</span>
+  <span class="badge badge-price">Total CK value: ${{ '%.2f'|format(total_value) }}</span>
+  <span class="badge badge-price">At/above {{ (min_ratio*100)|round(0)|int }}%: {{ meets_count }} cards / ${{ '%.2f'|format(meets_value) }}</span>
+</div>
+
+{% if not rows %}
+  <div class="empty-state">
+    <div class="empty-state-icon">&#128202;</div>
+    <div>No matches. Refresh both data sources, or lower the threshold.</div>
+  </div>
+{% else %}
+<table class="ck-table" style="width:100%; border-collapse:collapse;">
+  <thead>
+    <tr style="text-align:left;">
+      <th>Card</th>
+      <th>Set</th>
+      <th>Cond</th>
+      <th style="text-align:right;">MP price</th>
+      <th style="text-align:right;">CK buy</th>
+      <th style="text-align:right;">Ratio</th>
+      <th style="text-align:right;">Have</th>
+      <th style="text-align:right;">CK wants</th>
+      <th style="text-align:right;">Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="ck-row {% if r.meets %}ck-meets{% endif %} {% if r.ratio is not none and r.ratio >= 1.0 %}ck-over{% endif %}"
+        style="border-top:1px solid rgba(255,255,255,0.08);">
+      <td>
+        <span class="{% if r.is_foil %}foil-name{% endif %}">{{ r.card_name }}</span>
+        {% if r.is_foil %}<span class="badge badge-foil">Foil</span>{% endif %}
+        {% if not r.is_nm %}<span class="badge badge-missing" title="CardKingdom's buy price is for Near Mint; they will likely pay less for this condition.">CK pays less (non-NM)</span>{% endif %}
+      </td>
+      <td>{{ (r.set_code or '')|upper }}{% if r.collector_number %} #{{ r.collector_number }}{% endif %}</td>
+      <td>{% if r.condition_id %}<span class="badge condition-{{ r.condition_id|lower }}">{{ r.condition_id }}</span>{% endif %}</td>
+      <td style="text-align:right;">{% if r.mp_price is not none %}${{ '%.2f'|format(r.mp_price) }}{% else %}—{% endif %}</td>
+      <td style="text-align:right;">${{ '%.2f'|format(r.ck_price) }}</td>
+      <td style="text-align:right;">
+        {% if r.ratio is not none %}
+          <strong class="{% if r.meets %}ck-ratio-meets{% endif %}">{{ (r.ratio*100)|round(0)|int }}%</strong>
+        {% else %}—{% endif %}
+      </td>
+      <td style="text-align:right;">{{ r.quantity }}</td>
+      <td style="text-align:right;">{{ r.qty_buying }}</td>
+      <td style="text-align:right;"><strong>${{ '%.2f'|format(r.value) }}</strong></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

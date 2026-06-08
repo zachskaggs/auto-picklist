@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">CardKingdom Buylist</div>
+  <div>
+    <a class="btn secondary" href="/">Back to Batches</a>
+    <button id="ck-refresh-buylist" class="btn" onclick="ckRefresh('buylist')">Refresh CK Buylist</button>
+    <button id="ck-refresh-inventory" class="btn" onclick="ckRefresh('inventory')">Refresh ManaPool Inventory</button>
+  </div>
+</div>
+
+<div class="panel manapool-panel">
+  <div id="ck-status" class="badge">Idle</div>
+  <div id="ck-spinner" class="spinner" style="display:none;"></div>
+  <div style="margin-top:8px;">
+    <span class="badge">CK buylist rows: {{ ck_count }}</span>
+    <span class="badge">Inventory rows: {{ inv_count }}</span>
+    {% if last_logs.buylist %}<span class="badge">CK synced: {{ last_logs.buylist.started_at }} ({{ last_logs.buylist.status }})</span>{% endif %}
+    {% if last_logs.inventory %}<span class="badge">Inv synced: {{ last_logs.inventory.started_at }} ({{ last_logs.inventory.status }})</span>{% endif %}
+    {% if write_enabled %}
+      <span class="badge badge-missing">LIVE WRITES ON — picking a CK batch will delist on ManaPool</span>
+    {% else %}
+      <span class="badge">Dry-run: picks log delists but do NOT change ManaPool (set MANAPOOL_INVENTORY_WRITE=1 to enable)</span>
+    {% endif %}
+    {% if not manapool_configured %}<span class="badge badge-missing">ManaPool not configured</span>{% endif %}
+  </div>
+</div>
+
+<div class="panel" x-data="{ minRatio: {{ default_ratio }}, sort: 'value', onlyMeets: 0 }">
+  <div class="ck-controls" style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+    <label>
+      Min ratio (CK buy / ManaPool price):
+      <strong x-text="(minRatio*100).toFixed(0) + '%'"></strong>
+      <input type="range" min="0" max="1.5" step="0.01" x-model="minRatio"
+             hx-get="/api/cardkingdom/report" hx-target="#ck-report" hx-trigger="input changed delay:150ms"
+             hx-include="[name='min_ratio'],[name='sort']" name="min_ratio" />
+    </label>
+    <input type="hidden" name="min_ratio" :value="minRatio" />
+    <label>
+      Sort:
+      <select name="sort" x-model="sort"
+              hx-get="/api/cardkingdom/report" hx-target="#ck-report" hx-trigger="change"
+              hx-include="[name='min_ratio']">
+        <option value="value">Total value</option>
+        <option value="ratio">Ratio</option>
+      </select>
+    </label>
+    <label>
+      <input type="checkbox" x-model="onlyMeets" :true-value="1" :false-value="0" />
+      Only send cards at/above threshold to batch
+    </label>
+    <button class="btn" onclick="ckCreateBatch()">Send list to a pick batch &rarr;</button>
+  </div>
+
+  <div id="ck-report"
+       hx-get="/api/cardkingdom/report?min_ratio={{ default_ratio }}&sort=value"
+       hx-trigger="load">
+    <div class="empty-state"><div>Loading…</div></div>
+  </div>
+</div>
+
+<script>
+function ckRefresh(kind) {
+  const status = document.getElementById('ck-status');
+  const spinner = document.getElementById('ck-spinner');
+  const btn = document.getElementById('ck-refresh-' + kind);
+  btn.disabled = true;
+  spinner.style.display = 'inline-block';
+  status.textContent = (kind === 'buylist' ? 'Downloading CardKingdom buylist…' : 'Fetching ManaPool inventory…');
+  fetch('/api/cardkingdom/refresh-' + kind, { method: 'POST' })
+    .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Refresh failed'); return d; })
+    .then((d) => {
+      status.textContent = (kind === 'buylist'
+        ? `CK buylist: ${d.rows} rows (as of ${d.created_at || 'n/a'})`
+        : `Inventory: ${d.rows} card rows from ${d.items} listings`);
+      // Reload the report with current controls.
+      const minEl = document.querySelector("[name='min_ratio']");
+      const sortEl = document.querySelector("select[name='sort']");
+      const mr = minEl ? minEl.value : {{ default_ratio }};
+      const so = sortEl ? sortEl.value : 'value';
+      htmx.ajax('GET', `/api/cardkingdom/report?min_ratio=${mr}&sort=${so}`, '#ck-report');
+    })
+    .catch((e) => { status.textContent = 'Error: ' + e.message; })
+    .finally(() => { btn.disabled = false; spinner.style.display = 'none'; });
+}
+
+function ckCreateBatch() {
+  const minEl = document.querySelector("[name='min_ratio']");
+  const sortEl = document.querySelector("select[name='sort']");
+  const onlyEl = document.querySelector("input[type=checkbox][x-model='onlyMeets']");
+  const form = new FormData();
+  form.append('min_ratio', minEl ? minEl.value : {{ default_ratio }});
+  form.append('sort', sortEl ? sortEl.value : 'value');
+  form.append('only_meets', (onlyEl && onlyEl.checked) ? 1 : 0);
+  fetch('/api/cardkingdom/create-batch', { method: 'POST', body: form })
+    .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Failed'); return d; })
+    .then((d) => {
+      document.getElementById('ck-status').innerHTML =
+        `Created batch "${d.batch_name}" — ${d.rows} cards, $${d.total_value} CK value. <a href="/batch/${d.batch_id}">Open batch</a>`;
+    })
+    .catch((e) => { document.getElementById('ck-status').textContent = 'Error: ' + e.message; });
+}
+</script>
+{% endblock %}

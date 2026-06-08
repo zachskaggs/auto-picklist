@@ -1,5 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
+{% if batch.source == 'cardkingdom' %}
+<div class="panel manapool-panel" style="border-left:4px solid #c9a227;">
+  <div>
+    <strong>Card Kingdom buylist batch.</strong>
+    Picking a card here will remove that copy from your ManaPool inventory
+    ({% if write_enabled %}<span class="badge badge-missing">live writes ON</span>{% else %}dry-run — logged only{% endif %}).
+  </div>
+  <div style="margin-top:8px;">
+    <a class="btn" href="/batch/{{ batch.id }}/cardkingdom.csv?scope=picked" download>Download CK sell CSV (picked)</a>
+    <a class="btn secondary" href="/batch/{{ batch.id }}/cardkingdom.csv?scope=all" download>CSV (full list)</a>
+    <span class="badge">Title, Edition, Foil, Qty — ready for CardKingdom's CSV importer</span>
+  </div>
+</div>
+{% endif %}
 <div class="header">
   <div class="title header-hideable">Batch: {{ batch.name }}</div>
   <div class="header-right">
