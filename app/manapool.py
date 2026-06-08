@@ -6,10 +6,18 @@ load_optional_dotenv()
 import time
 import logging
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from requests.adapters import HTTPAdapter
 
 log = logging.getLogger('manapool')
+
+MAX_WORKERS = int(os.getenv('MANAPOOL_MAX_WORKERS', '8'))
+INVENTORY_PAGE_SIZE = int(os.getenv('MANAPOOL_INVENTORY_PAGE_SIZE', '500'))
+# Inventory is read-only and parallelizes well; give it its own (higher) default
+# so it isn't throttled by MANAPOOL_MAX_WORKERS (which may be tuned low for
+# order fetching).
+INVENTORY_WORKERS = int(os.getenv('MANAPOOL_INVENTORY_WORKERS', '12'))
 
 BASE_URL = os.getenv('MANAPOOL_BASE_URL', 'https://manapool.com/api/v1')
 EMAIL = os.getenv('MANAPOOL_EMAIL')
@@ -91,29 +99,65 @@ def _utc_now():
     return datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
 
 
-def list_inventory(limit=500):
-    """Page through GET /seller/inventory and return all inventory items."""
-    items = []
-    offset = 0
-    while True:
-        params = {'limit': limit, 'offset': offset}
-        resp, err = _request('GET', '/seller/inventory', params=params)
-        if err:
-            return None, err
-        if resp.status_code != 200:
-            return None, f"ManaPool error: {resp.status_code}"
-        data = resp.json()
-        batch = data.get('inventory', []) or []
-        items.extend(batch)
-        pagination = data.get('pagination') or {}
-        total = pagination.get('total')
-        offset += len(batch)
-        if not batch:
-            break
-        if total is not None and offset >= total:
-            break
-        if len(batch) < limit:
-            break
+def _fetch_inventory_page(limit, offset):
+    """Fetch one inventory page. Returns (items, total, error)."""
+    resp, err = _request('GET', '/seller/inventory', params={'limit': limit, 'offset': offset})
+    if err:
+        return None, None, err
+    if resp.status_code != 200:
+        return None, None, f"ManaPool error: {resp.status_code}"
+    data = resp.json()
+    batch = data.get('inventory', []) or []
+    total = (data.get('pagination') or {}).get('total')
+    return batch, total, None
+
+
+def list_inventory(limit=None):
+    """Return all seller inventory items.
+
+    Fetches page 0 to learn the total count, then pulls the remaining pages
+    concurrently (the inventory can be tens of thousands of items, so serial
+    pagination is the bottleneck). Falls back to serial paging when the API
+    doesn't report a total.
+    """
+    limit = limit or INVENTORY_PAGE_SIZE
+    first, total, err = _fetch_inventory_page(limit, 0)
+    if err:
+        return None, err
+    items = list(first)
+
+    # Unknown total or everything already returned -> nothing more (or fall back
+    # to serial paging if the first page was full but no total was given).
+    if total is None:
+        if len(first) < limit:
+            return items, None
+        offset = len(first)
+        while True:
+            batch, _t, err = _fetch_inventory_page(limit, offset)
+            if err:
+                return None, err
+            items.extend(batch)
+            offset += len(batch)
+            if len(batch) < limit:
+                break
+        return items, None
+
+    if total <= len(first):
+        return items, None
+
+    offsets = list(range(len(first), total, limit))
+    errors = []
+    workers = max(1, min(INVENTORY_WORKERS, len(offsets)))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_fetch_inventory_page, limit, off): off for off in offsets}
+        for fut in as_completed(futures):
+            batch, _t, err = fut.result()
+            if err:
+                errors.append(err)
+                continue
+            items.extend(batch)
+    if errors:
+        return None, errors[0]
     return items, None
 
 
