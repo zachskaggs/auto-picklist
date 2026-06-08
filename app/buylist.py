@@ -16,12 +16,19 @@ def _row_ratio(r):
     return r['ratio'] if r['ratio'] is not None else -1
 
 
-def compute_report(conn, min_ratio=0.75, sort_by='value', only_buying=True):
+def compute_report(conn, min_ratio=0.75, sort_by='value', only_buying=True, min_price=0.0):
     """Join cached ManaPool inventory with cached CardKingdom buylist.
 
     Returns a list of dict rows, each describing one ManaPool listing matched to
     a CardKingdom buy price. Sorted by total sellable value (default) or ratio.
+
+    min_price excludes cards whose CardKingdom buy price (per copy) is below the
+    given dollar amount, so low-value cards can be dropped from the list.
     """
+    try:
+        min_price = float(min_price or 0.0)
+    except (TypeError, ValueError):
+        min_price = 0.0
     sql = (
         'SELECT mi.inventory_id, mi.scryfall_id, mi.tcgplayer_sku, mi.name, '
         '       mi.set_code, mi.collector_number, mi.condition_id, mi.finish_id, '
@@ -42,7 +49,13 @@ def compute_report(conn, min_ratio=0.75, sort_by='value', only_buying=True):
         qty = int(r.get('quantity') or 0)
         qty_buying = int(r.get('qty_buying') or 0)
 
+        # You can't sell what you don't have: skip listings with zero on-hand
+        # quantity (ManaPool keeps priced-but-out-of-stock entries).
+        if qty <= 0:
+            continue
         if only_buying and qty_buying <= 0:
+            continue
+        if min_price and ck_price < min_price:
             continue
 
         ratio = (ck_price / mp_price) if (mp_price and mp_price > 0) else None

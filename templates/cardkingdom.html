@@ -26,40 +26,59 @@
   </div>
 </div>
 
-<div class="panel" x-data="{ minRatio: {{ default_ratio }}, sort: 'value', onlyMeets: 0 }">
+<div class="panel" x-data="{ minRatio: {{ default_ratio }}, minPrice: 0, sort: 'value', onlyMeets: 0 }">
   <div class="ck-controls" style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
     <label>
       Min ratio (CK buy / ManaPool price):
       <strong x-text="(minRatio*100).toFixed(0) + '%'"></strong>
-      <input type="range" min="0" max="1.5" step="0.01" x-model="minRatio"
-             hx-get="/api/cardkingdom/report" hx-target="#ck-report" hx-trigger="input changed delay:150ms"
-             hx-include="[name='min_ratio'],[name='sort']" name="min_ratio" />
+      <input id="ck-min-ratio" type="range" min="0" max="1.5" step="0.01" x-model="minRatio" />
     </label>
-    <input type="hidden" name="min_ratio" :value="minRatio" />
+    <label>
+      Min CK buy price ($):
+      <input id="ck-min-price" type="number" min="0" step="0.25" x-model="minPrice" style="width:6em;" />
+    </label>
     <label>
       Sort:
-      <select name="sort" x-model="sort"
-              hx-get="/api/cardkingdom/report" hx-target="#ck-report" hx-trigger="change"
-              hx-include="[name='min_ratio']">
+      <select id="ck-sort" x-model="sort">
         <option value="value">Total value</option>
         <option value="ratio">Ratio</option>
       </select>
     </label>
+    <button class="btn" onclick="ckApplyFilter()">Apply filter</button>
+    <span style="border-left:1px solid rgba(255,255,255,0.15); height:24px;"></span>
     <label>
-      <input type="checkbox" x-model="onlyMeets" :true-value="1" :false-value="0" />
+      <input id="ck-only-meets" type="checkbox" x-model="onlyMeets" :true-value="1" :false-value="0" />
       Only send cards at/above threshold to batch
     </label>
     <button class="btn" onclick="ckCreateBatch()">Send list to a pick batch &rarr;</button>
   </div>
 
   <div id="ck-report"
-       hx-get="/api/cardkingdom/report?min_ratio={{ default_ratio }}&sort=value"
+       hx-get="/api/cardkingdom/report?min_ratio={{ default_ratio }}&sort=value&min_price=0"
        hx-trigger="load">
     <div class="empty-state"><div>Loading…</div></div>
   </div>
 </div>
 
 <script>
+function ckFilterValues() {
+  const ratioEl = document.getElementById('ck-min-ratio');
+  const priceEl = document.getElementById('ck-min-price');
+  const sortEl = document.getElementById('ck-sort');
+  return {
+    min_ratio: ratioEl ? ratioEl.value : {{ default_ratio }},
+    min_price: (priceEl && priceEl.value) ? priceEl.value : 0,
+    sort: sortEl ? sortEl.value : 'value',
+  };
+}
+
+// Rebuild the report from the current control values. Only runs when the user
+// clicks "Apply filter" (or after a data refresh) — never on slider movement.
+function ckApplyFilter() {
+  const f = ckFilterValues();
+  htmx.ajax('GET', `/api/cardkingdom/report?min_ratio=${f.min_ratio}&sort=${f.sort}&min_price=${f.min_price}`, '#ck-report');
+}
+
 function ckRefresh(kind) {
   const status = document.getElementById('ck-status');
   const spinner = document.getElementById('ck-spinner');
@@ -73,30 +92,32 @@ function ckRefresh(kind) {
       status.textContent = (kind === 'buylist'
         ? `CK buylist: ${d.rows} rows (as of ${d.created_at || 'n/a'})`
         : `Inventory: ${d.rows} card rows from ${d.items} listings`);
-      // Reload the report with current controls.
-      const minEl = document.querySelector("[name='min_ratio']");
-      const sortEl = document.querySelector("select[name='sort']");
-      const mr = minEl ? minEl.value : {{ default_ratio }};
-      const so = sortEl ? sortEl.value : 'value';
-      htmx.ajax('GET', `/api/cardkingdom/report?min_ratio=${mr}&sort=${so}`, '#ck-report');
+      ckApplyFilter();
     })
     .catch((e) => { status.textContent = 'Error: ' + e.message; })
     .finally(() => { btn.disabled = false; spinner.style.display = 'none'; });
 }
 
 function ckCreateBatch() {
-  const minEl = document.querySelector("[name='min_ratio']");
-  const sortEl = document.querySelector("select[name='sort']");
-  const onlyEl = document.querySelector("input[type=checkbox][x-model='onlyMeets']");
+  const f = ckFilterValues();
+  const onlyEl = document.getElementById('ck-only-meets');
+  if (!confirm('This creates a pick batch AND removes these cards from your ManaPool inventory'
+      + ({{ 'true' if write_enabled else 'false' }} ? ' (LIVE — listings will be changed).' : ' (dry-run — logged only).')
+      + '\n\nContinue?')) return;
   const form = new FormData();
-  form.append('min_ratio', minEl ? minEl.value : {{ default_ratio }});
-  form.append('sort', sortEl ? sortEl.value : 'value');
+  form.append('min_ratio', f.min_ratio);
+  form.append('sort', f.sort);
+  form.append('min_price', f.min_price);
   form.append('only_meets', (onlyEl && onlyEl.checked) ? 1 : 0);
   fetch('/api/cardkingdom/create-batch', { method: 'POST', body: form })
     .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Failed'); return d; })
     .then((d) => {
+      const dl = d.delist || {};
+      const delistMsg = dl.dry_run
+        ? `${dl.attempted} cards flagged for delist (dry-run)`
+        : `${dl.ok} delisted from ManaPool` + (dl.errors ? `, ${dl.errors} errors` : '');
       document.getElementById('ck-status').innerHTML =
-        `Created batch "${d.batch_name}" — ${d.rows} cards, $${d.total_value} CK value. <a href="/batch/${d.batch_id}">Open batch</a>`;
+        `Created batch "${d.batch_name}" — ${d.rows} cards, $${d.total_value} CK value. ${delistMsg}. <a href="/batch/${d.batch_id}">Open batch</a>`;
     })
     .catch((e) => { document.getElementById('ck-status').textContent = 'Error: ' + e.message; });
 }

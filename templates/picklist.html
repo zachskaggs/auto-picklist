@@ -4,8 +4,9 @@
 <div class="panel manapool-panel" style="border-left:4px solid #c9a227;">
   <div>
     <strong>Card Kingdom buylist batch.</strong>
-    Picking a card here will remove that copy from your ManaPool inventory
-    ({% if write_enabled %}<span class="badge badge-missing">live writes ON</span>{% else %}dry-run — logged only{% endif %}).
+    These cards were removed from your ManaPool inventory when this batch was created
+    ({% if write_enabled %}<span class="badge badge-missing">live writes were ON</span>{% else %}dry-run — logged only{% endif %}).
+    Picking here just tracks what you've physically pulled.
   </div>
   <div style="margin-top:8px;">
     <a class="btn" href="/batch/{{ batch.id }}/cardkingdom.csv?scope=picked" download>Download CK sell CSV (picked)</a>

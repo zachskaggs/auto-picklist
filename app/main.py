@@ -151,58 +151,63 @@ def _ck_last_logs():
     return latest
 
 
-def _delist_for_pick(conn, item, picked_qty):
-    """Best-effort: remove picked copies from ManaPool when picking a CK batch.
+def _delist_report_rows(conn, rows):
+    """Remove the chosen copies from ManaPool when a CardKingdom batch is created.
 
-    Only fires for batches whose source is 'cardkingdom'. Never raises.
+    Runs once at batch-creation time (not at pick time). For each report row,
+    decrement the matching ManaPool listing by the quantity being sent to CK
+    (deleting it when the quantity reaches 0). Gated by MANAPOOL_INVENTORY_WRITE:
+    when disabled, the intended change is logged as a dry-run only. Returns a
+    summary dict; never raises.
     """
-    try:
-        batch = conn.execute('SELECT source FROM batches WHERE id = ?', (item['batch_id'],)).fetchone()
-        if not batch or (batch['source'] or '') != 'cardkingdom':
-            return
-        scryfall_id = item['scryfall_id']
-        if not scryfall_id:
-            return
-        # Find the current cached inventory quantity for this exact variant.
-        inv = conn.execute(
-            'SELECT quantity, price_cents, condition_id, finish_id, language_id '
-            'FROM manapool_inventory WHERE inventory_id = ?',
-            (item['mp_inventory_id'],),
-        ).fetchone() if item.get('mp_inventory_id') else None
-        if inv is not None:
-            current_qty = int(inv['quantity'] or 0)
-            price_cents = inv['price_cents']
-            condition_id = inv['condition_id']
-            finish_id = inv['finish_id']
-            language_id = inv['language_id']
-        else:
-            current_qty = int(item.get('qty_required') or 0)
-            price_cents = int(round((item.get('mp_price') or 0) * 100)) or None
-            condition_id = item.get('condition')
-            finish_id = 'FO' if item.get('is_foil') else 'NF'
-            language_id = item.get('language')
-        new_qty = max(0, current_qty - int(picked_qty))
-        result, err = manapool.set_inventory_quantity(
-            scryfall_id, condition_id, finish_id, language_id, new_qty, price_cents,
-        )
-        # Keep the local inventory cache in step with the write (or dry-run).
-        if item.get('mp_inventory_id'):
-            conn.execute(
-                'UPDATE manapool_inventory SET quantity = ? WHERE inventory_id = ?',
-                (new_qty, item['mp_inventory_id']),
-            )
-        if new_qty <= 0:
-            conn.execute('UPDATE batch_items SET mp_delisted = 1 WHERE id = ?', (item['id'],))
-        conn.commit()
-        if err:
-            _ck_log('delist', 'error', summary={'item_id': item['id'], 'scryfall_id': scryfall_id}, error=err)
-        else:
-            _ck_log('delist', 'ok', summary={'item_id': item['id'], 'new_quantity': new_qty, **(result or {})})
-    except Exception as exc:  # never block a pick on a delist failure
+    summary = {'attempted': 0, 'ok': 0, 'errors': 0, 'dry_run': not manapool.INVENTORY_WRITE}
+    for r in rows:
+        scryfall_id = r.get('scryfall_id')
+        sell_qty = int(r.get('sell_qty') or 0)
+        if not scryfall_id or sell_qty <= 0:
+            continue
+        summary['attempted'] += 1
         try:
-            _ck_log('delist', 'error', summary={'item_id': item.get('id')}, error=str(exc))
-        except Exception:
-            pass
+            inv = conn.execute(
+                'SELECT quantity, price_cents, condition_id, finish_id, language_id '
+                'FROM manapool_inventory WHERE inventory_id = ?',
+                (r.get('inventory_id'),),
+            ).fetchone() if r.get('inventory_id') else None
+            if inv is not None:
+                current_qty = int(inv['quantity'] or 0)
+                price_cents = inv['price_cents']
+                condition_id = inv['condition_id']
+                finish_id = inv['finish_id']
+                language_id = inv['language_id']
+            else:
+                current_qty = int(r.get('quantity') or 0)
+                price_cents = int(round((r.get('mp_price') or 0) * 100)) or None
+                condition_id = r.get('condition_id')
+                finish_id = 'FO' if r.get('is_foil') else 'NF'
+                language_id = r.get('language_id')
+            new_qty = max(0, current_qty - sell_qty)
+            result, err = manapool.set_inventory_quantity(
+                scryfall_id, condition_id, finish_id, language_id, new_qty, price_cents,
+            )
+            if r.get('inventory_id'):
+                conn.execute(
+                    'UPDATE manapool_inventory SET quantity = ? WHERE inventory_id = ?',
+                    (new_qty, r['inventory_id']),
+                )
+            if err:
+                summary['errors'] += 1
+                _ck_log('delist', 'error', summary={'scryfall_id': scryfall_id, 'sell_qty': sell_qty}, error=err)
+            else:
+                summary['ok'] += 1
+        except Exception as exc:
+            summary['errors'] += 1
+            try:
+                _ck_log('delist', 'error', summary={'scryfall_id': scryfall_id}, error=str(exc))
+            except Exception:
+                pass
+    conn.commit()
+    _ck_log('delist', 'ok' if not summary['errors'] else 'partial', summary=summary)
+    return summary
 
 
 def _latest_manapool_batch_warning():
@@ -537,23 +542,24 @@ def cardkingdom_refresh_inventory(request: Request, auth=Depends(require_auth)):
     return JSONResponse(summary)
 
 
-def _ck_report_rows(min_ratio, sort_by):
+def _ck_report_rows(min_ratio, sort_by, min_price=0.0):
     with get_conn() as conn:
-        return buylist.compute_report(conn, min_ratio=min_ratio, sort_by=sort_by)
+        return buylist.compute_report(conn, min_ratio=min_ratio, sort_by=sort_by, min_price=min_price)
 
 
 @app.get('/api/cardkingdom/report', response_class=HTMLResponse)
-def cardkingdom_report(request: Request, min_ratio: float = None, sort: str = 'value', auth=Depends(require_auth)):
+def cardkingdom_report(request: Request, min_ratio: float = None, sort: str = 'value', min_price: float = 0.0, auth=Depends(require_auth)):
     if min_ratio is None:
         min_ratio = CK_BUYLIST_MIN_RATIO
     sort_by = 'ratio' if (sort or '').lower() == 'ratio' else 'value'
-    rows = _ck_report_rows(min_ratio, sort_by)
+    rows = _ck_report_rows(min_ratio, sort_by, min_price=min_price)
     total_value = round(sum(r['value'] for r in rows), 2)
     meets_value = round(sum(r['value'] for r in rows if r['meets']), 2)
     return TEMPLATES.TemplateResponse('partials/ck_report.html', {
         'request': request,
         'rows': rows,
         'min_ratio': min_ratio,
+        'min_price': min_price,
         'sort_by': sort_by,
         'total_value': total_value,
         'meets_value': meets_value,
@@ -562,20 +568,21 @@ def cardkingdom_report(request: Request, min_ratio: float = None, sort: str = 'v
 
 
 @app.post('/api/cardkingdom/create-batch')
-def cardkingdom_create_batch(request: Request, min_ratio: float = Form(None), sort: str = Form('value'), only_meets: int = Form(0), auth=Depends(require_auth)):
+def cardkingdom_create_batch(request: Request, min_ratio: float = Form(None), sort: str = Form('value'), min_price: float = Form(0.0), only_meets: int = Form(0), auth=Depends(require_auth)):
     if min_ratio is None:
         min_ratio = CK_BUYLIST_MIN_RATIO
     sort_by = 'ratio' if (sort or '').lower() == 'ratio' else 'value'
-    rows = _ck_report_rows(min_ratio, sort_by)
+    rows = _ck_report_rows(min_ratio, sort_by, min_price=min_price)
     if only_meets:
         rows = [r for r in rows if r['meets']]
     if not rows:
-        raise HTTPException(status_code=400, detail='No matching cards to send to a batch. Refresh data or lower the threshold.')
+        raise HTTPException(status_code=400, detail='No matching cards to send to a batch. Refresh data or relax the filters.')
 
     batch_name = f"CardKingdom Buylist - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
     source_payload = {
         'generated_at': _utc_now(),
         'min_ratio': min_ratio,
+        'min_price': min_price,
         'sort_by': sort_by,
         'only_meets': bool(only_meets),
         'rows': len(rows),
@@ -619,11 +626,17 @@ def cardkingdom_create_batch(request: Request, min_ratio: float = Form(None), so
                 ),
             )
         conn.commit()
+        # Remove the chosen copies from ManaPool inventory now that the batch
+        # exists (gated by MANAPOOL_INVENTORY_WRITE; dry-run logs only).
+        delist = _delist_report_rows(conn, rows)
+        conn.execute('UPDATE batch_items SET mp_delisted = 1 WHERE batch_id = ?', (batch_id,))
+        conn.commit()
     return JSONResponse({
         'batch_id': batch_id,
         'batch_name': batch_name,
         'rows': len(rows),
         'total_value': source_payload['total_value'],
+        'delist': delist,
     })
 
 
@@ -922,7 +935,6 @@ async def assisted_action(
                     'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)',
                     ('pick', item_id, 1, _utc_now(), session_id, picker_name),
                 )
-                _delist_for_pick(conn, dict(item), 1)
         elif action == 'pick_all':
             if qty_remaining > 0:
                 conn.execute('UPDATE batch_items SET qty_picked = qty_required, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
@@ -930,7 +942,6 @@ async def assisted_action(
                     'INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)',
                     ('pick', item_id, qty_remaining, _utc_now(), session_id, picker_name),
                 )
-                _delist_for_pick(conn, dict(item), qty_remaining)
         elif action == 'missing':
             conn.execute(
                 'UPDATE batch_items SET is_missing = 1, missing_note = COALESCE(NULLIF(?, \'\'), missing_note), updated_at = ? WHERE id = ?',
@@ -1089,8 +1100,6 @@ async def pick_item(request: Request, item_id: int, show_picked: int = 0, show_m
         conn.execute('UPDATE batch_items SET qty_picked = qty_picked + 1, updated_at = ? WHERE id = ?', (_utc_now(), item_id))
         conn.execute('INSERT INTO events (type, batch_item_id, qty, timestamp, user_session_id, picker_name) VALUES (?, ?, ?, ?, ?, ?)', ('pick', item_id, 1, _utc_now(), session_id, picker_name))
         item = conn.execute('SELECT * FROM batch_items WHERE id = ?', (item_id,)).fetchone()
-        # CardKingdom batches only: remove the picked copy from ManaPool inventory.
-        _delist_for_pick(conn, dict(item), 1)
     await manager.broadcast(item['batch_id'], {'type': 'item_update', 'item_id': item_id})
     qty_rem = remaining_qty(item)
     if not show_all:

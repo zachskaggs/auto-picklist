@@ -81,6 +81,31 @@ def test_compute_report_ratio_value_and_threshold():
     assert rows[0]['inventory_id'] == 'i1'
 
 
+def test_compute_report_excludes_zero_quantity():
+    conn = _conn()
+    conn.execute("INSERT INTO ck_buylist VALUES ('a',0,'Have','S','sku','u',5.0,9)")
+    conn.execute("INSERT INTO ck_buylist VALUES ('b',0,'OutOfStock','S','sku','u',9.0,9)")
+    conn.execute("INSERT INTO manapool_inventory VALUES ('i1','a',null,'Have','s','1','NM','NF','EN',500,2,'t')")
+    conn.execute("INSERT INTO manapool_inventory VALUES ('i2','b',null,'OutOfStock','s','2','NM','NF','EN',900,0,'t')")
+    conn.commit()
+    rows = compute_report(conn)
+    assert [r['inventory_id'] for r in rows] == ['i1']  # zero-quantity i2 excluded
+
+
+def test_compute_report_min_price_filter():
+    conn = _conn()
+    conn.execute("INSERT INTO ck_buylist VALUES ('a',0,'Cheap','S','sku','u',0.25,5)")
+    conn.execute("INSERT INTO ck_buylist VALUES ('b',0,'Pricey','S','sku','u',3.00,5)")
+    conn.execute("INSERT INTO manapool_inventory VALUES ('i1','a',null,'Cheap','s','1','NM','NF','EN',100,2,'t')")
+    conn.execute("INSERT INTO manapool_inventory VALUES ('i2','b',null,'Pricey','s','2','NM','NF','EN',400,2,'t')")
+    conn.commit()
+    # No price floor -> both
+    assert len(compute_report(conn, min_price=0)) == 2
+    # $1 floor drops the $0.25 buylist card
+    rows = compute_report(conn, min_price=1.0)
+    assert [r['inventory_id'] for r in rows] == ['i2']
+
+
 def test_compute_report_only_buying_filter():
     conn = _conn()
     conn.execute("INSERT INTO ck_buylist VALUES ('a',0,'X','S','sku','u',8.0,0)")  # not buying
