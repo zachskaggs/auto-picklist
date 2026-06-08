@@ -4,6 +4,7 @@
   <div class="title">Open Batches</div>
   <div>
     <button id="mp-generate-btn" class="btn" onclick="generateManaPoolPicklist()">Generate Picklist from ManaPool (Unfulfilled)</button>
+    <a class="btn" href="/cardkingdom">CardKingdom Buylist</a>
     <a class="btn" href="/batch/new">New Batch</a>
     <a class="btn" href="/import">Import CSV</a>
   </div>
@@ -34,7 +35,11 @@
   <div class="batch-row" onclick="window.location='/batch/{{ b.id }}'" role="link" tabindex="0" onkeydown="if(event.key==='Enter')window.location='/batch/{{ b.id }}'">
     <div>
       <div class="title">{{ b.name }}</div>
-      <div class="badge">{{ b.source or 'Local' }}</div>
+      {% if b.source == 'cardkingdom' %}
+        <div class="badge badge-foil">CardKingdom</div>
+      {% else %}
+        <div class="badge">{{ b.source or 'Local' }}</div>
+      {% endif %}
       {% if b.total_qty and b.total_qty > 0 %}
       <div class="batch-progress">
         <div class="batch-progress-fill" style="width: {{ ((b.picked_qty or 0) / b.total_qty * 100)|round(1) }}%"></div>

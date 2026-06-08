@@ -1,0 +1,65 @@
+<div class="ck-summary">
+  <span class="ck-stat"><strong>{{ shown_count }}</strong> cards to sell</span>
+  <span class="ck-stat ck-stat-money"><strong>${{ '%.2f'|format(total_value) }}</strong> total CardKingdom value</span>
+  {% if avg_ratio is not none %}<span class="ck-stat">avg <strong>{{ (avg_ratio*100)|round(0)|int }}%</strong> of your price</span>{% endif %}
+  <span class="ck-stat ck-stat-muted">at/above {{ (min_ratio*100)|round(0)|int }}%{% if min_price %} · CK buy ≥ ${{ '%.2f'|format(min_price) }}{% endif %}</span>
+  {% if excluded_count %}<span class="ck-stat ck-stat-muted">{{ excluded_count }} more matched below your filters</span>{% endif %}
+</div>
+
+{% if not rows %}
+  <div class="empty-state">
+    <div class="empty-state-icon">&#128202;</div>
+    <div>No cards match these filters.</div>
+    <div class="ck-empty-hint">Try lowering the minimum ratio or buy-price, or refresh your data above.</div>
+  </div>
+{% else %}
+<div class="ck-table-wrap">
+<table class="ck-table" id="ck-table">
+  <thead>
+    <tr>
+      <th class="ck-sortable" data-key="name" data-type="text" onclick="ckSortTable(this)">Card</th>
+      <th class="ck-sortable" data-key="set" data-type="text" onclick="ckSortTable(this)">Set</th>
+      <th class="ck-sortable" data-key="cond" data-type="text" onclick="ckSortTable(this)">Cond</th>
+      <th class="ck-sortable ck-num" data-key="mp" data-type="num" onclick="ckSortTable(this)" title="What you currently list this card for on ManaPool">Your price</th>
+      <th class="ck-sortable ck-num" data-key="ck" data-type="num" onclick="ckSortTable(this)" title="CardKingdom's buy price per copy (Near Mint)">CK pays</th>
+      <th class="ck-sortable ck-num" data-key="ratio" data-type="num" onclick="ckSortTable(this)" title="CK buy price as a percentage of your ManaPool price. Higher = less money left on the table by selling to CK.">% of yours</th>
+      <th class="ck-sortable ck-num" data-key="have" data-type="num" onclick="ckSortTable(this)" title="How many you have listed on ManaPool">You have</th>
+      <th class="ck-sortable ck-num" data-key="wants" data-type="num" onclick="ckSortTable(this)" title="How many CardKingdom is currently buying">CK wants</th>
+      <th class="ck-sortable ck-num" data-key="value" data-type="num" onclick="ckSortTable(this)" title="CK buy price × the number you can sell">Sell value</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="ck-row{% if r.ratio is not none and r.ratio >= 1.0 %} ck-over{% endif %}"
+        data-name="{{ r.card_name|e }}"
+        data-set="{{ (r.set_code or '')|upper }}"
+        data-cond="{{ r.condition_id or '' }}"
+        data-mp="{{ r.mp_price if r.mp_price is not none else -1 }}"
+        data-ck="{{ r.ck_price }}"
+        data-ratio="{{ r.ratio if r.ratio is not none else -1 }}"
+        data-have="{{ r.quantity }}"
+        data-wants="{{ r.qty_buying }}"
+        data-value="{{ r.value }}">
+      <td>
+        <span class="ck-card-name {% if r.is_foil %}foil-name{% endif %}">{{ r.card_name }}</span>
+        {% if r.is_foil %}<span class="badge badge-foil">Foil</span>{% endif %}
+        {% if not r.is_nm %}<span class="badge badge-missing" title="CardKingdom's buy price is for Near Mint; they will likely pay less for a played copy.">non-NM</span>{% endif %}
+      </td>
+      <td class="ck-set">{{ (r.set_code or '')|upper }}{% if r.collector_number %} <span class="ck-muted">#{{ r.collector_number }}</span>{% endif %}</td>
+      <td>{% if r.condition_id %}<span class="badge condition-{{ r.condition_id|lower }}">{{ r.condition_id }}</span>{% endif %}</td>
+      <td class="ck-num">{% if r.mp_price is not none %}${{ '%.2f'|format(r.mp_price) }}{% else %}<span class="ck-muted">—</span>{% endif %}</td>
+      <td class="ck-num">${{ '%.2f'|format(r.ck_price) }}</td>
+      <td class="ck-num">
+        {% if r.ratio is not none %}
+          <span class="ck-ratio-pill{% if r.ratio >= 1.0 %} ck-ratio-over{% endif %}">{{ (r.ratio*100)|round(0)|int }}%</span>
+        {% else %}<span class="ck-muted">—</span>{% endif %}
+      </td>
+      <td class="ck-num">{{ r.quantity }}</td>
+      <td class="ck-num">{{ r.qty_buying }}</td>
+      <td class="ck-num ck-value">${{ '%.2f'|format(r.value) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}

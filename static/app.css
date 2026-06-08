@@ -1326,3 +1326,84 @@ body {
     font-size: var(--font-sm);
   }
 }
+
+/* ── CardKingdom Buylist ──────────────────────────────── */
+.ck-intro { padding: var(--space-lg); }
+.ck-lead { margin: 0 0 var(--space-sm); font-size: var(--font-lg); color: var(--text); }
+.ck-steps { margin: 0; padding-left: 1.2em; color: var(--muted); line-height: 1.7; }
+.ck-steps strong { color: var(--text); }
+
+.ck-section { padding: var(--space-lg); }
+.ck-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-md); flex-wrap: wrap; margin-bottom: var(--space-md);
+}
+.ck-section-head h3 { margin: 0; font-size: var(--font-lg); color: var(--text); }
+
+.ck-databar { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.ck-chip {
+  display: inline-block; padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-md); font-size: var(--font-sm);
+  background: var(--surface-hover); color: var(--text); border: 1px solid var(--border-light);
+}
+.ck-chip-ok { background: var(--success-light); border-color: #bbf7d0; }
+.ck-chip-warn { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.ck-chip-live { background: #fef9c3; color: #854d0e; border-color: #f59e0b; font-weight: 600; }
+.ck-muted { color: var(--muted); font-weight: 400; }
+
+.ck-status { margin-top: var(--space-md); font-size: var(--font-sm); min-height: 1.2em; }
+.ck-status:empty { display: none; }
+.ck-status-info { color: var(--muted); }
+.ck-status-ok { color: var(--success); }
+.ck-status-err { color: var(--danger); }
+.ck-status a { color: var(--accent-dark); font-weight: 600; }
+
+.ck-controls { display: flex; gap: var(--space-xl); flex-wrap: wrap; align-items: flex-end; }
+.ck-control { display: flex; flex-direction: column; gap: var(--space-xs); }
+.ck-control > label { font-weight: 600; font-size: var(--font-sm); color: var(--text); }
+.ck-control-actions { justify-content: flex-end; }
+.ck-slider-row { display: flex; align-items: center; gap: var(--space-md); }
+.ck-slider-row input[type=range] { width: 240px; }
+.ck-slider-val {
+  font-weight: 700; font-size: var(--font-lg); color: var(--accent-dark);
+  min-width: 3.5em; text-align: right;
+}
+.ck-hint { font-size: var(--font-sm); color: var(--muted); }
+
+.ck-summary {
+  display: flex; flex-wrap: wrap; gap: var(--space-lg); align-items: baseline;
+  margin: 0 0 var(--space-md); padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border-light);
+}
+.ck-stat { font-size: var(--font-base); color: var(--text); }
+.ck-stat strong { font-size: var(--font-lg); }
+.ck-stat-money strong { color: var(--success); }
+.ck-stat-muted { color: var(--muted); font-size: var(--font-sm); }
+
+.ck-table-wrap { overflow-x: auto; }
+.ck-table { width: 100%; border-collapse: collapse; font-size: var(--font-base); }
+.ck-table thead th {
+  position: sticky; top: 0; background: var(--panel);
+  text-align: left; padding: var(--space-sm) var(--space-md);
+  border-bottom: 2px solid var(--border); color: var(--muted);
+  font-size: var(--font-sm); white-space: nowrap; z-index: 1;
+}
+.ck-table th.ck-num, .ck-table td.ck-num { text-align: right; }
+.ck-sortable { cursor: pointer; user-select: none; }
+.ck-sortable:hover { color: var(--accent-dark); }
+.ck-sortable::after { content: '\2195'; opacity: 0.35; margin-left: 4px; font-size: 0.85em; }
+.ck-sortable.ck-sort-asc::after { content: '\25B2'; opacity: 1; }
+.ck-sortable.ck-sort-desc::after { content: '\25BC'; opacity: 1; }
+.ck-table tbody td { padding: var(--space-sm) var(--space-md); border-bottom: 1px solid var(--border-light); }
+.ck-table tbody tr:hover { background: var(--surface-hover); }
+.ck-row.ck-over { background: var(--success-light); }
+.ck-row.ck-over:hover { background: #d2f5dd; }
+.ck-card-name { font-weight: 600; }
+.ck-set { white-space: nowrap; }
+.ck-value { font-weight: 700; color: var(--success); }
+.ck-ratio-pill {
+  display: inline-block; padding: 1px var(--space-sm); border-radius: var(--radius-sm);
+  background: var(--accent-light); color: var(--accent-dark); font-weight: 700; font-size: var(--font-sm);
+}
+.ck-ratio-pill.ck-ratio-over { background: var(--success); color: #fff; }
+.ck-empty-hint { font-size: var(--font-sm); color: var(--muted); margin-top: var(--space-sm); }

@@ -18,7 +18,7 @@ from .env import load_optional_dotenv
 from .build_info import get_version, get_build_date
 from .db import init_db, get_conn
 from .logic import sort_items, remaining_qty
-from . import manapool, scryfall
+from . import manapool, scryfall, cardkingdom, buylist
 
 load_optional_dotenv()
 
@@ -31,6 +31,7 @@ BASIC_AUTH_PASS = os.getenv('BASIC_AUTH_PASS')
 
 MANAPOOL_RECENT_MINUTES = int(os.getenv('MANAPOOL_RECENT_MINUTES', '10'))
 MANAPOOL_MAX_WORKERS = int(os.getenv('MANAPOOL_MAX_WORKERS', '8'))
+CK_BUYLIST_MIN_RATIO = float(os.getenv('CK_BUYLIST_MIN_RATIO', '0.75'))
 
 # In-memory map of session_id -> display name for scoreboard labels.
 # Populated when users register their name via POST /api/session/name.
@@ -119,6 +120,94 @@ def _finish_sync_log(log_id, status, summary=None, error=None):
             (_utc_now(), status, json.dumps(summary) if summary else None, error, log_id),
         )
         conn.commit()
+
+
+def _ck_log(kind, status, summary=None, error=None):
+    with get_conn() as conn:
+        conn.execute(
+            'INSERT INTO ck_sync_log (kind, started_at, finished_at, status, summary_json, error_text) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            (kind, _utc_now(), _utc_now(), status, json.dumps(summary) if summary else None, error),
+        )
+        conn.commit()
+
+
+def _ck_last_logs():
+    with get_conn() as conn:
+        rows = conn.execute(
+            'SELECT * FROM ck_sync_log WHERE kind IN ("buylist", "inventory") '
+            'ORDER BY started_at DESC'
+        ).fetchall()
+    latest = {}
+    for r in rows:
+        if r['kind'] not in latest:
+            d = dict(r)
+            if d.get('summary_json'):
+                try:
+                    d['summary'] = json.loads(d['summary_json'])
+                except Exception:
+                    d['summary'] = None
+            latest[r['kind']] = d
+    return latest
+
+
+def _delist_report_rows(conn, rows):
+    """Remove the chosen copies from ManaPool when a CardKingdom batch is created.
+
+    Runs once at batch-creation time (not at pick time). For each report row,
+    decrement the matching ManaPool listing by the quantity being sent to CK
+    (deleting it when the quantity reaches 0). Gated by MANAPOOL_INVENTORY_WRITE:
+    when disabled, the intended change is logged as a dry-run only. Returns a
+    summary dict; never raises.
+    """
+    summary = {'attempted': 0, 'ok': 0, 'errors': 0, 'dry_run': not manapool.INVENTORY_WRITE}
+    for r in rows:
+        scryfall_id = r.get('scryfall_id')
+        sell_qty = int(r.get('sell_qty') or 0)
+        if not scryfall_id or sell_qty <= 0:
+            continue
+        summary['attempted'] += 1
+        try:
+            inv = conn.execute(
+                'SELECT quantity, price_cents, condition_id, finish_id, language_id '
+                'FROM manapool_inventory WHERE inventory_id = ?',
+                (r.get('inventory_id'),),
+            ).fetchone() if r.get('inventory_id') else None
+            if inv is not None:
+                current_qty = int(inv['quantity'] or 0)
+                price_cents = inv['price_cents']
+                condition_id = inv['condition_id']
+                finish_id = inv['finish_id']
+                language_id = inv['language_id']
+            else:
+                current_qty = int(r.get('quantity') or 0)
+                price_cents = int(round((r.get('mp_price') or 0) * 100)) or None
+                condition_id = r.get('condition_id')
+                finish_id = 'FO' if r.get('is_foil') else 'NF'
+                language_id = r.get('language_id')
+            new_qty = max(0, current_qty - sell_qty)
+            result, err = manapool.set_inventory_quantity(
+                scryfall_id, condition_id, finish_id, language_id, new_qty, price_cents,
+            )
+            if r.get('inventory_id'):
+                conn.execute(
+                    'UPDATE manapool_inventory SET quantity = ? WHERE inventory_id = ?',
+                    (new_qty, r['inventory_id']),
+                )
+            if err:
+                summary['errors'] += 1
+                _ck_log('delist', 'error', summary={'scryfall_id': scryfall_id, 'sell_qty': sell_qty}, error=err)
+            else:
+                summary['ok'] += 1
+        except Exception as exc:
+            summary['errors'] += 1
+            try:
+                _ck_log('delist', 'error', summary={'scryfall_id': scryfall_id}, error=str(exc))
+            except Exception:
+                pass
+    conn.commit()
+    _ck_log('delist', 'ok' if not summary['errors'] else 'partial', summary=summary)
+    return summary
 
 
 def _latest_manapool_batch_warning():
@@ -412,6 +501,148 @@ def generate_from_manapool(request: Request, auth=Depends(require_auth)):
 
     return JSONResponse(summary)
 
+@app.get('/cardkingdom', response_class=HTMLResponse)
+def cardkingdom_view(request: Request, auth=Depends(require_auth)):
+    with get_conn() as conn:
+        ck_count = conn.execute('SELECT COUNT(*) AS c FROM ck_buylist').fetchone()['c']
+        inv_count = conn.execute('SELECT COUNT(*) AS c FROM manapool_inventory').fetchone()['c']
+    return TEMPLATES.TemplateResponse('cardkingdom.html', {
+        'request': request,
+        'ck_count': ck_count,
+        'inv_count': inv_count,
+        'last_logs': _ck_last_logs(),
+        'default_ratio': CK_BUYLIST_MIN_RATIO,
+        'manapool_configured': manapool.is_configured(),
+        'write_enabled': manapool.INVENTORY_WRITE,
+    })
+
+
+@app.post('/api/cardkingdom/refresh-buylist')
+def cardkingdom_refresh_buylist(request: Request, auth=Depends(require_auth)):
+    with get_conn() as conn:
+        summary, err = cardkingdom.refresh_buylist_cache(conn)
+    if err:
+        _ck_log('buylist', 'error', error=err)
+        raise HTTPException(status_code=502, detail=err)
+    _ck_log('buylist', 'ok', summary=summary)
+    return JSONResponse(summary)
+
+
+@app.post('/api/cardkingdom/refresh-inventory')
+def cardkingdom_refresh_inventory(request: Request, auth=Depends(require_auth)):
+    if not manapool.is_configured():
+        _ck_log('inventory', 'error', error='ManaPool not configured')
+        raise HTTPException(status_code=400, detail='ManaPool not configured')
+    with get_conn() as conn:
+        summary, err = manapool.refresh_inventory_cache(conn)
+    if err:
+        _ck_log('inventory', 'error', error=err)
+        raise HTTPException(status_code=502, detail=err)
+    _ck_log('inventory', 'ok', summary=summary)
+    return JSONResponse(summary)
+
+
+def _ck_report_rows(min_ratio, sort_by, min_price=0.0):
+    with get_conn() as conn:
+        return buylist.compute_report(conn, min_ratio=min_ratio, sort_by=sort_by, min_price=min_price)
+
+
+@app.get('/api/cardkingdom/report', response_class=HTMLResponse)
+def cardkingdom_report(request: Request, min_ratio: float = None, sort: str = 'value', min_price: float = 0.0, auth=Depends(require_auth)):
+    if min_ratio is None:
+        min_ratio = CK_BUYLIST_MIN_RATIO
+    sort_by = 'ratio' if (sort or '').lower() == 'ratio' else 'value'
+    all_rows = _ck_report_rows(min_ratio, sort_by, min_price=min_price)
+    # The ratio threshold FILTERS the list (not just highlights): only show cards
+    # CardKingdom pays at least the chosen fraction of your ManaPool price for.
+    rows = [r for r in all_rows if r['meets']]
+    total_value = round(sum(r['value'] for r in rows), 2)
+    ratios = [r['ratio'] for r in rows if r['ratio'] is not None]
+    avg_ratio = round(sum(ratios) / len(ratios), 4) if ratios else None
+    return TEMPLATES.TemplateResponse('partials/ck_report.html', {
+        'request': request,
+        'rows': rows,
+        'min_ratio': min_ratio,
+        'min_price': min_price,
+        'sort_by': sort_by,
+        'total_value': total_value,
+        'avg_ratio': avg_ratio,
+        'shown_count': len(rows),
+        'excluded_count': len(all_rows) - len(rows),
+    })
+
+
+@app.post('/api/cardkingdom/create-batch')
+def cardkingdom_create_batch(request: Request, min_ratio: float = Form(None), sort: str = Form('value'), min_price: float = Form(0.0), auth=Depends(require_auth)):
+    if min_ratio is None:
+        min_ratio = CK_BUYLIST_MIN_RATIO
+    sort_by = 'ratio' if (sort or '').lower() == 'ratio' else 'value'
+    # Send exactly what the filtered list shows (cards at/above the threshold).
+    rows = [r for r in _ck_report_rows(min_ratio, sort_by, min_price=min_price) if r['meets']]
+    if not rows:
+        raise HTTPException(status_code=400, detail='No matching cards to send to a batch. Refresh data or relax the filters.')
+
+    batch_name = f"CardKingdom Buylist - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
+    source_payload = {
+        'generated_at': _utc_now(),
+        'min_ratio': min_ratio,
+        'min_price': min_price,
+        'sort_by': sort_by,
+        'rows': len(rows),
+        'total_value': round(sum(r['value'] for r in rows), 2),
+    }
+    with get_conn() as conn:
+        conn.execute(
+            'INSERT INTO batches (name, status, source, created_at, updated_at, source_payload) VALUES (?, ?, ?, ?, ?, ?)',
+            (batch_name, 'open', 'cardkingdom', _utc_now(), _utc_now(), json.dumps(source_payload)),
+        )
+        batch_id = conn.execute('SELECT last_insert_rowid() AS id').fetchone()['id']
+        for r in rows:
+            conn.execute(
+                'INSERT INTO batch_items '
+                '(batch_id, game, set_code, card_name, collector_number, scryfall_id, qty_required, qty_picked, '
+                'condition, language, printing, purchase_price, mp_price, ck_price, ck_qty_buying, ck_ratio, '
+                'is_foil, mp_inventory_id, mp_tcgplayer_sku, ck_name, ck_edition, updated_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (
+                    batch_id,
+                    'Magic',
+                    (r.get('set_code') or '').lower(),
+                    r.get('card_name') or '',
+                    r.get('collector_number'),
+                    r.get('scryfall_id'),
+                    r.get('sell_qty') or 0,
+                    _map_condition(r.get('condition_id')),
+                    r.get('language_id'),
+                    'Foil' if r.get('is_foil') else None,
+                    r.get('mp_price'),
+                    r.get('mp_price'),
+                    r.get('ck_price'),
+                    r.get('qty_buying'),
+                    r.get('ratio'),
+                    1 if r.get('is_foil') else 0,
+                    r.get('inventory_id'),
+                    r.get('tcgplayer_sku'),
+                    r.get('ck_name'),
+                    r.get('ck_edition'),
+                    _utc_now(),
+                ),
+            )
+        conn.commit()
+        # Remove the chosen copies from ManaPool inventory now that the batch
+        # exists (gated by MANAPOOL_INVENTORY_WRITE; dry-run logs only).
+        delist = _delist_report_rows(conn, rows)
+        conn.execute('UPDATE batch_items SET mp_delisted = 1 WHERE batch_id = ?', (batch_id,))
+        conn.commit()
+    return JSONResponse({
+        'batch_id': batch_id,
+        'batch_name': batch_name,
+        'rows': len(rows),
+        'total_value': source_payload['total_value'],
+        'delist': delist,
+    })
+
+
 @app.get('/batch/new', response_class=HTMLResponse)
 def batch_new_view(request: Request, auth=Depends(require_auth)):
     return TEMPLATES.TemplateResponse('batch_new.html', {'request': request})
@@ -455,7 +686,7 @@ def picklist(request: Request, batch_id: int, auth=Depends(require_auth)):
         except Exception:
             source_orders = []
     available_sets = [r['set_code'] for r in set_rows]
-    return TEMPLATES.TemplateResponse('picklist.html', {'request': request, 'batch': batch, 'source_orders': source_orders, 'available_sets': available_sets})
+    return TEMPLATES.TemplateResponse('picklist.html', {'request': request, 'batch': batch, 'source_orders': source_orders, 'available_sets': available_sets, 'write_enabled': manapool.INVENTORY_WRITE})
 
 
 @app.get('/batch/{batch_id}/assisted-pick', response_class=HTMLResponse)
@@ -996,6 +1227,39 @@ def missing_export(batch_id: int, auth=Depends(require_auth)):
     for r in rows:
         writer.writerow([r['card_name'], r['set_code'], r['qty_required'], r['missing_note'] or ''])
     return PlainTextResponse(output.getvalue(), media_type='text/csv')
+
+
+@app.get('/batch/{batch_id}/cardkingdom.csv')
+def cardkingdom_sell_csv(batch_id: int, scope: str = 'picked', auth=Depends(require_auth)):
+    """Export a CardKingdom sell-import CSV for a CardKingdom batch.
+
+    scope='picked' (default) exports the copies actually pulled (qty_picked);
+    scope='all' exports the full intended quantity (qty_required).
+    """
+    with get_conn() as conn:
+        batch = conn.execute('SELECT * FROM batches WHERE id = ?', (batch_id,)).fetchone()
+        if not batch:
+            raise HTTPException(status_code=404)
+        if (batch['source'] or '') != 'cardkingdom':
+            raise HTTPException(status_code=400, detail='Not a CardKingdom batch')
+        rows = conn.execute(
+            'SELECT card_name, set_code, is_foil, qty_required, qty_picked, ck_name, ck_edition '
+            'FROM batch_items WHERE batch_id = ? ORDER BY set_code, card_name',
+            (batch_id,),
+        ).fetchall()
+    use_all = (scope or '').lower() == 'all'
+    items = []
+    for r in rows:
+        d = dict(r)
+        d['qty'] = d['qty_required'] if use_all else d['qty_picked']
+        items.append(d)
+    csv_text = buylist.build_ck_sell_csv(items)
+    filename = f"cardkingdom-batch-{batch_id}-{'all' if use_all else 'picked'}.csv"
+    return PlainTextResponse(
+        csv_text,
+        media_type='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get('/batch/{batch_id}/packing-slip', response_class=HTMLResponse)

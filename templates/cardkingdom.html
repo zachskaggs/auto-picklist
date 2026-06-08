@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div class="title">CardKingdom Buylist</div>
+  <div>
+    <a class="btn secondary" href="/">Back to Batches</a>
+  </div>
+</div>
+
+<div class="panel ck-intro">
+  <p class="ck-lead">Find the cards in your ManaPool inventory that are most worth selling to CardKingdom — especially ones where CK pays close to (or more than) your own list price.</p>
+  <ol class="ck-steps">
+    <li><strong>Refresh your data</strong> — pull the latest CardKingdom buy prices and your ManaPool inventory.</li>
+    <li><strong>Set your filters</strong> and click <em>Apply</em> — the list shows only cards worth selling.</li>
+    <li><strong>Send the list to a pick batch</strong> — those cards are removed from ManaPool so you can ship them to CK.</li>
+  </ol>
+</div>
+
+<!-- Step 1: data -->
+<div class="panel ck-section">
+  <div class="ck-section-head">
+    <h3>1 · Your data</h3>
+    <div>
+      <button id="ck-refresh-buylist" class="btn" onclick="ckRefresh('buylist')">Refresh CK buylist</button>
+      <button id="ck-refresh-inventory" class="btn" onclick="ckRefresh('inventory')">Refresh ManaPool inventory</button>
+      <span id="ck-spinner" class="spinner" style="display:none;"></span>
+    </div>
+  </div>
+  <div class="ck-databar">
+    <span class="ck-chip {% if ck_count %}ck-chip-ok{% else %}ck-chip-warn{% endif %}">
+      CardKingdom buylist: <strong>{{ ck_count }}</strong> cards
+      {% if last_logs.buylist %}<span class="ck-muted"> · {{ last_logs.buylist.started_at }}</span>{% else %}<span class="ck-muted"> · never synced</span>{% endif %}
+    </span>
+    <span class="ck-chip {% if inv_count %}ck-chip-ok{% else %}ck-chip-warn{% endif %}">
+      ManaPool inventory: <strong>{{ inv_count }}</strong> cards
+      {% if last_logs.inventory %}<span class="ck-muted"> · {{ last_logs.inventory.started_at }}</span>{% else %}<span class="ck-muted"> · never synced</span>{% endif %}
+    </span>
+    {% if write_enabled %}
+      <span class="ck-chip ck-chip-live">Live writes ON — creating a batch will delist on ManaPool</span>
+    {% else %}
+      <span class="ck-chip ck-muted">Dry-run — creating a batch logs delists only (set MANAPOOL_INVENTORY_WRITE=1 for real)</span>
+    {% endif %}
+    {% if not manapool_configured %}<span class="ck-chip ck-chip-warn">ManaPool not configured</span>{% endif %}
+  </div>
+  <div id="ck-status" class="ck-status"></div>
+</div>
+
+<!-- Step 2: filters -->
+<div class="panel ck-section" x-data="{ minRatio: {{ default_ratio }}, minPrice: 0 }">
+  <div class="ck-section-head"><h3>2 · Filter the list</h3></div>
+  <div class="ck-controls">
+    <div class="ck-control">
+      <label for="ck-min-ratio">Minimum CK price as % of your ManaPool price</label>
+      <div class="ck-slider-row">
+        <input id="ck-min-ratio" type="range" min="0" max="1.5" step="0.05" x-model="minRatio" />
+        <output class="ck-slider-val" x-text="(minRatio*100).toFixed(0) + '%'"></output>
+      </div>
+      <span class="ck-hint">Higher = only cards CK pays nearly as much for as you list them.</span>
+    </div>
+    <div class="ck-control">
+      <label for="ck-min-price">Minimum CK buy price ($)</label>
+      <input id="ck-min-price" type="number" min="0" step="0.25" x-model="minPrice" class="input" style="width:7em;" />
+      <span class="ck-hint">Skip low-value cards not worth shipping.</span>
+    </div>
+    <div class="ck-control ck-control-actions">
+      <button class="btn" onclick="ckApplyFilter()">Apply filters</button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3: results -->
+<div class="panel ck-section">
+  <div class="ck-section-head">
+    <h3>3 · Cards to sell</h3>
+    <button class="btn" onclick="ckCreateBatch()">Send list to a pick batch &rarr;</button>
+  </div>
+  <p class="ck-hint">Click any column heading to sort. "Send to a pick batch" creates a CardKingdom batch from exactly the cards shown below.</p>
+  <div id="ck-report"
+       hx-get="/api/cardkingdom/report?min_ratio={{ default_ratio }}&min_price=0"
+       hx-trigger="load">
+    <div class="empty-state"><div>Loading…</div></div>
+  </div>
+</div>
+
+<script>
+function ckFilterValues() {
+  const ratioEl = document.getElementById('ck-min-ratio');
+  const priceEl = document.getElementById('ck-min-price');
+  return {
+    min_ratio: ratioEl ? ratioEl.value : {{ default_ratio }},
+    min_price: (priceEl && priceEl.value) ? priceEl.value : 0,
+  };
+}
+
+// Rebuild the report from the current filters. Runs only on "Apply filters"
+// (or after a data refresh) — never while dragging the slider.
+function ckApplyFilter() {
+  const f = ckFilterValues();
+  htmx.ajax('GET', `/api/cardkingdom/report?min_ratio=${f.min_ratio}&min_price=${f.min_price}`, '#ck-report');
+}
+
+// Client-side column sort on the already-loaded table (instant, no server hit).
+function ckSortTable(th) {
+  const table = document.getElementById('ck-table');
+  if (!table) return;
+  const key = th.dataset.key, type = th.dataset.type;
+  const asc = !th.classList.contains('ck-sort-asc');
+  th.parentNode.querySelectorAll('th').forEach(h => h.classList.remove('ck-sort-asc', 'ck-sort-desc'));
+  th.classList.add(asc ? 'ck-sort-asc' : 'ck-sort-desc');
+  const tbody = table.tBodies[0];
+  const rows = Array.from(tbody.rows);
+  rows.sort((a, b) => {
+    let av = a.dataset[key], bv = b.dataset[key];
+    if (type === 'num') return asc ? (parseFloat(av) - parseFloat(bv)) : (parseFloat(bv) - parseFloat(av));
+    av = (av || '').toLowerCase(); bv = (bv || '').toLowerCase();
+    return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+function ckRefresh(kind) {
+  const status = document.getElementById('ck-status');
+  const spinner = document.getElementById('ck-spinner');
+  const btn = document.getElementById('ck-refresh-' + kind);
+  btn.disabled = true;
+  spinner.style.display = 'inline-block';
+  status.className = 'ck-status ck-status-info';
+  status.textContent = (kind === 'buylist' ? 'Downloading CardKingdom buylist…' : 'Fetching ManaPool inventory (this can take a few seconds)…');
+  fetch('/api/cardkingdom/refresh-' + kind, { method: 'POST' })
+    .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Refresh failed'); return d; })
+    .then((d) => {
+      status.className = 'ck-status ck-status-ok';
+      status.textContent = (kind === 'buylist'
+        ? `CardKingdom buylist updated: ${d.rows} cards (as of ${d.created_at || 'n/a'}). Reloading list…`
+        : `ManaPool inventory updated: ${d.rows} cards from ${d.items} listings. Reloading list…`);
+      ckApplyFilter();
+    })
+    .catch((e) => { status.className = 'ck-status ck-status-err'; status.textContent = 'Error: ' + e.message; })
+    .finally(() => { btn.disabled = false; spinner.style.display = 'none'; });
+}
+
+function ckCreateBatch() {
+  const f = ckFilterValues();
+  const live = {{ 'true' if write_enabled else 'false' }};
+  const msg = 'Create a pick batch from the cards shown and remove them from your ManaPool inventory'
+      + (live ? ' (LIVE — your listings WILL be changed).' : ' (dry-run — logged only, listings unchanged).')
+      + '\n\nContinue?';
+  if (!confirm(msg)) return;
+  const status = document.getElementById('ck-status');
+  const form = new FormData();
+  form.append('min_ratio', f.min_ratio);
+  form.append('min_price', f.min_price);
+  fetch('/api/cardkingdom/create-batch', { method: 'POST', body: form })
+    .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Failed'); return d; })
+    .then((d) => {
+      const dl = d.delist || {};
+      const delistMsg = dl.dry_run
+        ? `${dl.attempted} cards flagged for delist (dry-run)`
+        : `${dl.ok} delisted from ManaPool` + (dl.errors ? `, ${dl.errors} errors` : '');
+      status.className = 'ck-status ck-status-ok';
+      status.innerHTML = `Created batch “${d.batch_name}” — ${d.rows} cards, $${d.total_value} CK value. ${delistMsg}. <a href="/batch/${d.batch_id}">Open batch &rarr;</a>`;
+    })
+    .catch((e) => { status.className = 'ck-status ck-status-err'; status.textContent = 'Error: ' + e.message; });
+}
+</script>
+{% endblock %}
