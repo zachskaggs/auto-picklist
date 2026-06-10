@@ -10,9 +10,9 @@ def test_sort_items():
         {'game': 'Magic', 'set_code': 'woe', 'card_name': 'Beta'},
     ]
     out = sort_items(items)
-    assert out[0]['card_name'] == 'Alpha'
-    assert out[1]['card_name'] == 'Beta'
-    assert out[-1]['card_name'] == 'Omega'
+    # Magic sorts before other games; within Magic, carded sets come before
+    # missing-set cards; non-Magic games (Pokemon) sort last.
+    assert [i['card_name'] for i in out] == ['Alpha', 'Beta', 'Omega', 'Zard']
 
 
 def test_remaining_qty():
